@@ -8,6 +8,10 @@ tokenization, subscription billing, an internal financial ledger,
 reconciliation, and normalized webhooks — without ever becoming a card
 processor itself.
 
+> **Security warning:** FraterUnion Payments must never receive, transmit,
+> log or store raw card PAN or CVC data. Sensitive card collection must
+> remain inside payment-provider-controlled components.
+
 ## Repository status
 
 This repository currently contains **only the monorepo foundation**: the
@@ -39,6 +43,32 @@ packages/
 docs/            Architecture, decisions, operations, product, security notes
 infrastructure/  Docker, Railway, and operational scripts (not yet populated)
 ```
+
+## Documentation
+
+Product scope and architectural principles are authoritative documents;
+implementation must follow them, not the other way around.
+
+**Product**
+
+- [Vision](docs/product/vision.md) — mission, strategic problem, product
+  principles, long-term direction, and non-goals.
+- [V1 scope](docs/product/v1-scope.md) — the committed boundary for the
+  first implementation milestone and its success criteria.
+
+**Architecture**
+
+- [System context](docs/architecture/system-context.md) — actors, system
+  diagram, trust boundaries, deployment model, and architectural style.
+- [Security boundaries](docs/architecture/security-boundaries.md) — the
+  card-data boundary, secret handling, multi-tenancy, webhooks, and threat
+  model.
+- [Payment lifecycle](docs/architecture/payment-lifecycle.md) — the
+  normalized payment state machine and failure/refund handling.
+- [Subscription lifecycle](docs/architecture/subscription-lifecycle.md) —
+  design constraints for future recurring billing.
+- [Ledger principles](docs/architecture/ledger-principles.md) — double-entry
+  accounting principles, invariants, and reconciliation.
 
 ## Prerequisites
 
