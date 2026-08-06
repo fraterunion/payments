@@ -57,8 +57,8 @@ internal API.
 
 These principles are binding constraints on design and implementation, not
 aspirations. Any change that violates one of them requires an explicit,
-documented decision (see [`../decisions/`](../decisions/) once architecture
-decision records exist).
+documented decision recorded as an
+[Architecture Decision Record](../decisions/README.md).
 
 1. **Provider independence.** No internal domain concept (payment,
    customer, subscription) may be modeled in terms of a specific provider's

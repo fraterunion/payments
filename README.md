@@ -70,6 +70,13 @@ implementation must follow them, not the other way around.
 - [Ledger principles](docs/architecture/ledger-principles.md) — double-entry
   accounting principles, invariants, and reconciliation.
 
+**Decisions**
+
+- [Architecture Decision Records](docs/decisions/README.md) — the index of
+  accepted decisions (framework choices, data store, tenancy, provider
+  abstraction, card-data boundary, ledger model, event delivery, merchant
+  accounts, and money/time representation) that implementation must follow.
+
 ## Prerequisites
 
 - Node.js 22 (see `.nvmrc`)

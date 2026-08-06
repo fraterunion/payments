@@ -218,3 +218,14 @@ rather than treated as unrecoverable errors:
   JavaScript SDK) may inform UI state, but it never, by itself, marks a
   payment `SUCCEEDED` internally or triggers ledger posting; only a
   verified backend signal (webhook, or reconciliation fetch) does.
+
+## Related decisions
+
+- [ADR-004](../decisions/ADR-004-provider-abstraction.md) — why provider
+  statuses are translated into the normalized states used above.
+- [ADR-006](../decisions/ADR-006-append-only-double-entry-ledger.md) —
+  the ledger model that payment success and refunds post to.
+- [ADR-007](../decisions/ADR-007-transactional-outbox-and-inbox.md) — the
+  delivery guarantees behind webhook-driven finalization.
+- [ADR-009](../decisions/ADR-009-integer-minor-units-for-money.md) — the
+  representation of payment and refund amounts.

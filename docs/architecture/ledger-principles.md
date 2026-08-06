@@ -192,3 +192,15 @@ The internal ledger described here is not automatically:
 It is a purpose-built internal record for tracking payment-related money
 movement accurately enough to support reconciliation, operational
 reporting, and auditability of the payment platform itself.
+
+## Related decisions
+
+- [ADR-002](../decisions/ADR-002-postgresql-and-prisma.md) — the
+  transactional datastore the ledger's balanced-transaction guarantees
+  depend on.
+- [ADR-006](../decisions/ADR-006-append-only-double-entry-ledger.md) —
+  the binding decision behind the principles above.
+- [ADR-009](../decisions/ADR-009-integer-minor-units-for-money.md) — the
+  amount representation used in every ledger entry.
+- [ADR-010](../decisions/ADR-010-utc-time-and-iso-currencies.md) — the
+  timestamp representation used in every ledger transaction.

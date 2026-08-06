@@ -162,3 +162,14 @@ reliability requirements become clear.
   worker into its own scaled deployment, or splitting a module into a
   separate service) when real operational data — load, deployment
   cadence, team ownership — demonstrates the need, not speculatively.
+
+## Related decisions
+
+- [ADR-001](../decisions/ADR-001-nestjs-nextjs-and-typescript.md) —
+  framework and language choices behind the API, Admin, Docs, and Worker
+  described above.
+- [ADR-003](../decisions/ADR-003-multi-tenant-organization-model.md) —
+  the tenancy model underlying the FraterUnion internal boundary.
+- [ADR-007](../decisions/ADR-007-transactional-outbox-and-inbox.md) — the
+  inbox/outbox mechanism behind the asynchronous confirmation path shown
+  in the context diagram.

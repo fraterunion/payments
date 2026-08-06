@@ -203,3 +203,11 @@ to become configurable (globally, and potentially per organization or
 plan) once subscriptions are implemented. If all attempts fail, the
 subscription moves to `EXPIRED` per the [state diagram](#state-diagram),
 unless a different terminal policy is configured.
+
+## Related decisions
+
+- [ADR-006](../decisions/ADR-006-append-only-double-entry-ledger.md) —
+  the ledger model future invoices and renewal payments will post to.
+- [ADR-010](../decisions/ADR-010-utc-time-and-iso-currencies.md) — the
+  UTC-plus-IANA-zone time model the billing scheduler expectations above
+  depend on.

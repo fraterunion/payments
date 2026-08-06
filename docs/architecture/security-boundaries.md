@@ -183,3 +183,12 @@ compliance certification. FraterUnion Payments does not currently claim,
 and must not be described as, PCI DSS compliant, SOC 2 compliant, or
 certified under any other framework, until such status has been formally
 assessed and validated by qualified, independent parties.
+
+## Related decisions
+
+- [ADR-003](../decisions/ADR-003-multi-tenant-organization-model.md) —
+  the accepted tenancy model behind the multi-tenancy boundary above.
+- [ADR-005](../decisions/ADR-005-no-raw-card-data.md) — the binding
+  decision behind the card-data boundary above.
+- [ADR-007](../decisions/ADR-007-transactional-outbox-and-inbox.md) — the
+  inbox mechanism behind the webhook boundary above.

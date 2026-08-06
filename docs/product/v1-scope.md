@@ -80,7 +80,8 @@ one milestone.
   support the v1 flow. The specific Stripe Connect account model (if any)
   is deliberately not committed here; it requires implementation-time
   analysis of FraterUnion's merchant-of-record and payout requirements
-  before selection.
+  before selection (see
+  [ADR-008](../decisions/ADR-008-provider-owned-merchant-accounts.md)).
 
 ### Infrastructure
 
