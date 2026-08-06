@@ -4,10 +4,14 @@
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
-  "types": "./src/index.ts",
   "scripts": {
     "db:generate": "prisma generate",
     "db:format": "prisma format",
@@ -19,11 +23,12 @@
     "lint": "eslint .",
     "typecheck": "pnpm run db:generate && tsc --noEmit",
     "test": "pnpm run db:generate && vitest run",
-    "build": "prisma generate"
+    "build": "pnpm run db:generate && tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@prisma/adapter-pg": "catalog:",
-    "@prisma/client": "catalog:"
+    "@prisma/client": "catalog:",
+    "@prisma/client-runtime-utils": "catalog:"
   },
   "devDependencies": {
     "@fraterunion-payments/eslint-config": "workspace:*",

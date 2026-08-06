@@ -111,6 +111,21 @@ pnpm db:seed            # run the local development seed
 pnpm db:studio          # open Prisma Studio
 ```
 
+## API
+
+The NestJS API's infrastructure (configuration, health checks, database
+lifecycle, logging, error handling) is documented in
+[`apps/api`](apps/api/README.md).
+
+```bash
+pnpm dev:api                   # start the API in watch mode
+pnpm build:api                 # build the API
+pnpm start:api                 # run the built API
+pnpm test:api                  # API unit tests
+pnpm test:api:e2e              # API e2e tests (database dependency is faked)
+pnpm test:api:integration:db   # real-PostgreSQL smoke test (requires DATABASE_URL)
+```
+
 ## Quality commands
 
 ```bash

@@ -23,7 +23,13 @@
     "db:migrate:dev": "pnpm --filter @fraterunion-payments/database run db:migrate:dev",
     "db:migrate:deploy": "pnpm --filter @fraterunion-payments/database run db:migrate:deploy",
     "db:seed": "pnpm --filter @fraterunion-payments/database run db:seed",
-    "db:studio": "pnpm --filter @fraterunion-payments/database run db:studio"
+    "db:studio": "pnpm --filter @fraterunion-payments/database run db:studio",
+    "dev:api": "pnpm --filter @fraterunion-payments/api run dev",
+    "build:api": "pnpm --filter @fraterunion-payments/api run build",
+    "start:api": "pnpm --filter @fraterunion-payments/api run start",
+    "test:api": "pnpm --filter @fraterunion-payments/api run test",
+    "test:api:e2e": "pnpm --filter @fraterunion-payments/api run test:e2e",
+    "test:api:integration:db": "pnpm --filter @fraterunion-payments/api run test:integration:db"
   },
   "devDependencies": {
     "@commitlint/cli": "catalog:",

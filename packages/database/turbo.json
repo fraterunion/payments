@@ -3,7 +3,7 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "outputs": ["generated/**"]
+      "outputs": ["dist/**", "generated/**"]
     },
     "typecheck": {
       "outputs": ["generated/**"]

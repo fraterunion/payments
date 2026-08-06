@@ -64,8 +64,28 @@ import {
 **unconnected** client on every call — this package does not construct a
 module-level singleton and does not connect to a database on import.
 Connection lifecycle (when to `$connect`/`$disconnect`, how many clients to
-hold) is owned by the consuming application (a future NestJS module), not
-by this package.
+hold) is owned by the consuming application (`apps/api`'s `DatabaseService`
+in this repository), not by this package.
+
+**This package's own `src/` is compiled** (`pnpm run build` →
+`tsc -p tsconfig.build.json` → `dist/`, gitignored, matching `generated/`)
+rather than exported as raw TypeScript source. Unlike the other minimal
+`packages/*` placeholders, this package has real runtime logic that other
+apps execute — not just typecheck against — and a consumer running already-
+built code (`node dist/main.js`, no TypeScript compiler in the loop) cannot
+resolve a `package.json#exports` entry pointing at a `.ts` file. `exports`
+uses the `types`/`default` conditions to point `tsc` at `dist/index.d.ts`
+and runtime resolution at `dist/index.js`.
+
+**`$connect()` does not eagerly validate connectivity.** With Prisma 7's
+driver-adapter model, `PrismaClient#$connect()` prepares the adapter but
+the underlying connection pool connects lazily, per query — calling only
+`$connect()` against an unreachable database resolves successfully instead
+of rejecting. `createPrismaClient` accepts a `connectionTimeoutMillis`
+option (default 10s, passed through to the underlying `pg.Pool`) so that a
+consumer performing a real query — as `apps/api`'s `DatabaseService` does
+during startup, deliberately, for exactly this reason — fails within a
+bounded time instead of hanging indefinitely.
 
 ## Local setup
 
@@ -126,7 +146,13 @@ part of `pnpm build`; it is a deliberate, separate operation.
 first, so a clean checkout produces a working client before type-checking,
 testing, or being consumed by another package's build — no manual
 generation step is required beyond having `DATABASE_URL` unset being
-acceptable for `generate` (schema-only, no connection needed).
+acceptable for `generate` (schema-only, no connection needed). `build`
+additionally compiles `src/` to `dist/` (see
+[Generated-client strategy](#generated-client-strategy)) — any package
+depending on `@fraterunion-payments/database` needs `pnpm --filter
+@fraterunion-payments/database run build` (or `pnpm build` at the root,
+which orders it correctly via Turborepo's dependency graph) to have run at
+least once.
 
 ## Migration workflow
 

@@ -9,14 +9,27 @@
     "start": "node dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "jest"
+    "test": "jest",
+    "test:e2e": "jest --config test/jest-e2e.json",
+    "test:integration:db": "jest --config test/jest-integration.json"
   },
   "dependencies": {
+    "@fraterunion-payments/config": "workspace:*",
+    "@fraterunion-payments/database": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
+    "@nestjs/swagger": "catalog:",
+    "class-transformer": "catalog:",
+    "class-validator": "catalog:",
+    "express": "catalog:",
+    "helmet": "catalog:",
+    "nestjs-pino": "catalog:",
+    "pino": "catalog:",
+    "pino-http": "catalog:",
     "reflect-metadata": "catalog:",
-    "rxjs": "catalog:"
+    "rxjs": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@fraterunion-payments/eslint-config": "workspace:*",
@@ -27,9 +40,12 @@
     "@types/express": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
+    "@types/supertest": "catalog:",
     "eslint": "catalog:",
     "jest": "catalog:",
+    "pino-pretty": "catalog:",
     "source-map-support": "catalog:",
+    "supertest": "catalog:",
     "ts-jest": "catalog:",
     "ts-loader": "catalog:",
     "ts-node": "catalog:",
@@ -46,6 +62,9 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
