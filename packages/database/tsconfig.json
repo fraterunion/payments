@@ -1,0 +1,4 @@
+{
+  "extends": "@fraterunion-payments/typescript-config/library.json",
+  "include": ["src", "prisma/seed.ts", "prisma.config.ts"]
+}

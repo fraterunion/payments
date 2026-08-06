@@ -1,0 +1,312 @@
+// FraterUnion Payments — core tenancy schema.
+// See packages/database/README.md for naming conventions, deletion policy,
+// indexing rationale, and the database-enforced vs. application-enforced
+// validation boundary. See docs/decisions/ADR-002 and ADR-003.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+
+  @@map("organization_status")
+}
+
+enum OrganizationType {
+  /// A tenant business using FraterUnion Payments (GymOS, RestaurantOS, etc.).
+  BUSINESS
+  /// Reserved for FraterUnion-controlled operational organizations. Does not
+  /// by itself grant cross-tenant access; authorization is defined later.
+  INTERNAL
+
+  @@map("organization_type")
+}
+
+enum MembershipRole {
+  /// Ultimate tenant administration and billing/provider authority.
+  OWNER
+  /// Broad organization administration.
+  ADMIN
+  /// Integration and API access management.
+  DEVELOPER
+  /// Read-oriented reporting access.
+  ANALYST
+  /// Limited operational support capabilities.
+  SUPPORT
+
+  @@map("membership_role")
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+
+  @@map("user_status")
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+
+  @@map("api_key_status")
+}
+
+/// Named `ApiEnvironment` rather than `Environment` to avoid collision with
+/// runtime-environment terminology (`NODE_ENV`, deployment environment).
+/// This enum tracks whether an API key operates against test or live
+/// provider data, independent of where the application itself is deployed.
+enum ApiEnvironment {
+  TEST
+  LIVE
+
+  @@map("api_environment")
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+/// A tenant of FraterUnion Payments. Organizations are the unit of data
+/// ownership referenced by every tenant-scoped model (ADR-003).
+///
+/// Deletion policy: organizations are never physically deleted through
+/// ordinary product flows. Every relation from a dependent model back to
+/// Organization uses `onDelete: Restrict`, so the database itself refuses to
+/// delete an organization while any membership, API key, or audit log still
+/// references it. Deactivation is expressed through `status`, not deletion.
+model Organization {
+  id   String @id @default(uuid(7)) @db.Uuid
+  name String
+  /// Globally unique, URL-safe tenant identifier.
+  slug String @unique
+
+  type   OrganizationType   @default(BUSINESS)
+  status OrganizationStatus @default(ACTIVE)
+
+  /// Uppercase ISO 4217 currency code. Stored as plain text; validated by
+  /// application code, not by the database (see README).
+  defaultCurrency String @map("default_currency") @db.VarChar(3)
+  /// Uppercase ISO 3166-1 alpha-2 country code. Same validation boundary as
+  /// `defaultCurrency`.
+  countryCode     String @map("country_code") @db.VarChar(2)
+  /// IANA timezone identifier (for example, "America/New_York"). Validated
+  /// by application code.
+  timezone        String @db.VarChar(64)
+
+  /// Free-form organization metadata. Defaults to an empty JSON object so
+  /// callers are never required to supply it explicitly.
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships OrganizationMembership[]
+  apiKeys     ApiKey[]
+  auditLogs   AuditLog[]
+
+  @@index([status])
+  @@index([type])
+  @@map("organizations")
+}
+
+/// A person who can authenticate against FraterUnion Payments. This commit
+/// intentionally defines identity only: no password, OAuth, or
+/// authentication-provider fields. Authentication is future work.
+model User {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Globally unique. Database uniqueness is a byte-for-byte comparison; it
+  /// does not canonicalize case or handle look-alike addresses. Robust
+  /// case-insensitive identity is application-enforced later (see README).
+  email       String  @unique @db.VarChar(320)
+  displayName String? @map("display_name")
+
+  status          UserStatus @default(INVITED)
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(3)
+  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  memberships    OrganizationMembership[]
+  sessions       Session[]
+  apiKeysCreated ApiKey[]                 @relation("ApiKeyCreatedBy")
+  auditLogEvents AuditLog[]               @relation("AuditLogActorUser")
+
+  @@index([status])
+  @@map("users")
+}
+
+/// The join between a User and an Organization, carrying the user's role
+/// within that organization. Unique per (organizationId, userId): a user
+/// holds exactly one role per organization in this commit.
+///
+/// Deletion policy: deleting the organization is blocked (`Restrict`) for
+/// the reasons described on `Organization`. Deleting the user cascades to
+/// their memberships (`Cascade`), since a membership has no meaning once
+/// the user it refers to is gone; this does not affect audit history, which
+/// references users independently and nullably (see `AuditLog`).
+model OrganizationMembership {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+
+  role MembershipRole
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("organization_memberships")
+}
+
+/// A tenant-scoped API credential. Only a cryptographic hash of the secret
+/// is ever stored; the plaintext key is never recoverable from this record.
+/// Key generation and scope semantics are not implemented in this commit.
+///
+/// `keyPrefix` uniqueness is scoped to `(organizationId, keyPrefix)`, not
+/// global: a short prefix used for dashboard/log identification is not
+/// guaranteed collision-free across unrelated organizations unless the
+/// (future) generation strategy makes it so. `secretHash` is globally
+/// unique, since a hash of a properly random, high-entropy secret should
+/// never legitimately collide; a collision indicates a generation bug.
+///
+/// Deletion policy: organizations block deletion (`Restrict`), same as
+/// elsewhere. The creating user is optional and nullable (`SetNull` on
+/// delete) so a key survives the removal of the user who created it —
+/// revoked keys are retained for history via `status`, never deleted.
+model ApiKey {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  name       String
+  /// Short, non-secret identifier shown in dashboards and logs.
+  keyPrefix  String @map("key_prefix") @db.VarChar(16)
+  /// Cryptographic hash of the API key secret. Never the plaintext key.
+  secretHash String @unique @map("secret_hash") @db.VarChar(255)
+
+  status      ApiKeyStatus
+  environment ApiEnvironment
+
+  /// Scope vocabulary is not yet defined; stored as free-form strings.
+  scopes String[] @default([])
+
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  /// Nullable to support controlled bootstrap/service key creation that has
+  /// no associated human user.
+  createdByUserId String? @map("created_by_user_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdByUser  User?        @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  auditLogEvents AuditLog[]   @relation("AuditLogActorApiKey")
+
+  @@unique([organizationId, keyPrefix])
+  @@index([organizationId, environment, status])
+  @@index([status])
+  @@map("api_keys")
+}
+
+/// A server-side authentication session for a User. Only a hash of the
+/// session/refresh token is stored; the plaintext token is never persisted.
+/// This commit does not model access-token storage.
+///
+/// Deletion policy: sessions are ephemeral security state, not historical
+/// financial or audit records, so they cascade-delete with their user.
+model Session {
+  id     String @id @default(uuid(7)) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// Hash of the session/refresh token. Unique because a properly random
+  /// token's hash should never legitimately collide; this also serves as
+  /// the lookup index, so no separate index is added for it.
+  tokenHash String @unique @map("token_hash") @db.VarChar(255)
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  /// Native PostgreSQL `inet` type, supported cleanly by Prisma.
+  ipAddress String? @map("ip_address") @db.Inet
+  userAgent String? @map("user_agent") @db.VarChar(512)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// Append-oriented record of privileged and security-relevant actions.
+/// Deliberately has no `updatedAt`: audit records are not edited.
+///
+/// `actorUserId` and `actorApiKeyId` are independently nullable — some
+/// events are system-generated and have neither. This commit does not
+/// enforce "exactly one actor" at the database level, since doing so would
+/// either block legitimate system actors or require a check constraint
+/// interacting awkwardly with nullable foreign keys; see README.
+///
+/// Deletion policy: the organization relation blocks deletion (`Restrict`).
+/// The actor relations use `SetNull` so that deleting or deactivating a user
+/// or API key can never delete audit history — only the actor reference is
+/// cleared, the event itself remains.
+model AuditLog {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  actorUserId   String? @map("actor_user_id") @db.Uuid
+  actorApiKeyId String? @map("actor_api_key_id") @db.Uuid
+
+  /// Extensible action identifier (for example, "payment.refunded").
+  action       String  @db.VarChar(128)
+  /// Extensible resource type identifier (for example, "payment").
+  resourceType String  @map("resource_type") @db.VarChar(128)
+  resourceId   String? @map("resource_id") @db.VarChar(128)
+
+  requestId String? @map("request_id") @db.VarChar(128)
+  ipAddress String? @map("ip_address") @db.Inet
+  userAgent String? @map("user_agent") @db.VarChar(512)
+
+  /// Structured event detail. Must never contain secrets, plaintext
+  /// credentials, session/API-key material, or raw card data (ADR-005).
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  actorUser    User?        @relation("AuditLogActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorApiKey  ApiKey?      @relation("AuditLogActorApiKey", fields: [actorApiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([actorUserId])
+  @@index([actorApiKeyId])
+  @@index([requestId])
+  @@index([action])
+  @@map("audit_logs")
+}

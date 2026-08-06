@@ -16,7 +16,14 @@
     "test": "turbo run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:generate": "pnpm --filter @fraterunion-payments/database run db:generate",
+    "db:format": "pnpm --filter @fraterunion-payments/database run db:format",
+    "db:validate": "pnpm --filter @fraterunion-payments/database run db:validate",
+    "db:migrate:dev": "pnpm --filter @fraterunion-payments/database run db:migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @fraterunion-payments/database run db:migrate:deploy",
+    "db:seed": "pnpm --filter @fraterunion-payments/database run db:seed",
+    "db:studio": "pnpm --filter @fraterunion-payments/database run db:studio"
   },
   "devDependencies": {
     "@commitlint/cli": "catalog:",

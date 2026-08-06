@@ -31,7 +31,7 @@ apps/
 
 packages/
   config/               Future environment/config utilities
-  database/             Future Prisma schema (intentionally deferred)
+  database/             PostgreSQL/Prisma schema and client (core tenancy)
   eslint-config/        Shared ESLint flat configs (base, next, node)
   payment-core/         Future provider-independent payment domain logic
   provider-contracts/   Future payment-provider interfaces
@@ -93,6 +93,22 @@ pnpm install
 ```bash
 pnpm dev         # run every app in watch/dev mode via Turborepo
 pnpm build       # build every app and package
+```
+
+## Database
+
+FraterUnion Payments uses PostgreSQL via Prisma
+(see [ADR-002](docs/decisions/ADR-002-postgresql-and-prisma.md)). Schema,
+migrations, and setup instructions live in
+[`packages/database`](packages/database/README.md).
+
+```bash
+pnpm db:generate        # generate the Prisma client
+pnpm db:validate        # validate the Prisma schema
+pnpm db:migrate:dev     # create and apply a migration in development
+pnpm db:migrate:deploy  # apply pending migrations (CI/production)
+pnpm db:seed            # run the local development seed
+pnpm db:studio          # open Prisma Studio
 ```
 
 ## Quality commands
