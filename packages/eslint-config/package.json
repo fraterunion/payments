@@ -1,0 +1,22 @@
+{
+  "name": "@fraterunion-payments/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "exports": {
+    "./base": "./base.mjs",
+    "./next": "./next.mjs",
+    "./node": "./node.mjs"
+  },
+  "dependencies": {
+    "@eslint/js": "catalog:",
+    "eslint-config-next": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "globals": "catalog:",
+    "typescript-eslint": "catalog:"
+  },
+  "peerDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

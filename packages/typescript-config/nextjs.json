@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "FraterUnion Payments Next.js",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "jsx": "preserve",
+    "noEmit": true,
+    "incremental": true,
+    "plugins": [{ "name": "next" }]
+  }
+}

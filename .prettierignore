@@ -1,0 +1,12 @@
+node_modules
+.pnpm-store
+.turbo
+dist
+build
+out
+.next
+coverage
+pnpm-lock.yaml
+*.tsbuildinfo
+packages/database/generated
+next-env.d.ts

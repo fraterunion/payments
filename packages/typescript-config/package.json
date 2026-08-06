@@ -1,0 +1,13 @@
+{
+  "name": "@fraterunion-payments/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "files": [
+    "base.json",
+    "node.json",
+    "nestjs.json",
+    "nextjs.json",
+    "library.json"
+  ]
+}

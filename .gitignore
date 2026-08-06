@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.turbo/
+
+# Generated
+*.tsbuildinfo
+coverage/
+
+# Prisma (generated client, not committed until schema is introduced)
+packages/database/generated/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Testing
+.vitest-cache/

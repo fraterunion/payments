@@ -1,0 +1,56 @@
+{
+  "name": "@fraterunion-payments/api",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-express": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:"
+  },
+  "devDependencies": {
+    "@fraterunion-payments/eslint-config": "workspace:*",
+    "@fraterunion-payments/typescript-config": "workspace:*",
+    "@nestjs/cli": "catalog:",
+    "@nestjs/schematics": "catalog:",
+    "@nestjs/testing": "catalog:",
+    "@types/express": "catalog:",
+    "@types/jest": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "jest": "catalog:",
+    "source-map-support": "catalog:",
+    "ts-jest": "catalog:",
+    "ts-loader": "catalog:",
+    "ts-node": "catalog:",
+    "tsconfig-paths": "catalog:",
+    "typescript": "catalog:"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
+  }
+}

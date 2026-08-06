@@ -1,0 +1,50 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+onlyBuiltDependencies:
+  - esbuild
+  - unrs-resolver
+
+catalog:
+  typescript: 5.9.3
+  eslint: 9.39.5
+  '@eslint/js': 9.39.5
+  typescript-eslint: 8.66.0
+  eslint-config-next: 16.3.0
+  eslint-config-prettier: 10.1.8
+  globals: 17.9.0
+  prettier: 3.9.6
+  turbo: 2.10.8
+  vitest: 4.1.10
+  '@vitest/coverage-v8': 4.1.10
+  husky: 9.1.7
+  lint-staged: 17.3.0
+  '@commitlint/cli': 21.2.1
+  '@commitlint/config-conventional': 21.2.0
+  next: 16.3.0
+  react: 19.2.8
+  react-dom: 19.2.8
+  '@types/react': 19.2.18
+  '@types/react-dom': 19.2.4
+  '@types/node': 22.20.1
+  tailwindcss: 4.3.3
+  '@tailwindcss/postcss': 4.3.3
+  postcss: 8.5.26
+  '@nestjs/common': 11.1.28
+  '@nestjs/core': 11.1.28
+  '@nestjs/platform-express': 11.1.28
+  '@nestjs/testing': 11.1.28
+  '@nestjs/cli': 11.0.24
+  '@nestjs/schematics': 11.1.0
+  '@types/express': 5.0.6
+  '@types/jest': 30.0.0
+  jest: 30.4.2
+  ts-jest: 29.4.12
+  reflect-metadata: 0.2.2
+  rxjs: 7.8.2
+  ts-node: 10.9.2
+  ts-loader: 9.6.2
+  tsconfig-paths: 4.2.0
+  source-map-support: 0.5.21
+  tsx: 4.23.9

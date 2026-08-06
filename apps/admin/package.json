@@ -1,0 +1,30 @@
+{
+  "name": "@fraterunion-payments/admin",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev -p 3000",
+    "start": "next start -p 3000",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@fraterunion-payments/eslint-config": "workspace:*",
+    "@fraterunion-payments/typescript-config": "workspace:*",
+    "@tailwindcss/postcss": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "eslint": "catalog:",
+    "postcss": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:"
+  }
+}
