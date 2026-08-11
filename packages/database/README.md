@@ -3,10 +3,10 @@
 ## Purpose
 
 This package owns the PostgreSQL schema and Prisma client for FraterUnion
-Payments. This commit establishes the Prisma/PostgreSQL foundation and the
-core multi-tenant identity schema: organizations, users, memberships, API
-keys, sessions, and the audit log. It intentionally does not include
-payment, customer, ledger, webhook, or provider entities — see
+Payments. This package establishes the Prisma/PostgreSQL foundation and the
+core multi-tenant identity schema: organizations, users, user credentials,
+memberships, API keys, sessions, and the audit log. It intentionally does
+not include payment, customer, ledger, webhook, or provider entities — see
 [`../../docs/decisions/ADR-002-postgresql-and-prisma.md`](../../docs/decisions/ADR-002-postgresql-and-prisma.md)
 and
 [`../../docs/decisions/ADR-003-multi-tenant-organization-model.md`](../../docs/decisions/ADR-003-multi-tenant-organization-model.md)
@@ -161,7 +161,9 @@ Migrations are created with `prisma migrate dev`, never with
 under `prisma/migrations/`, consistent with
 [ADR-002](../../docs/decisions/ADR-002-postgresql-and-prisma.md)'s
 requirement that production migrations be generated and reviewed, not
-pushed. The initial migration is named `init_core_tenancy`.
+pushed. The initial migration is named `init_core_tenancy`; authentication
+credentials and session-rotation fields were added in
+`add_authentication_credentials`.
 
 Before committing a migration:
 
@@ -245,6 +247,8 @@ revoking an API key may destroy audit history.** Concretely:
 | `ApiKey.organization` → `Organization`                 | `Restrict` | Same rationale as above.                                                                                    |
 | `ApiKey.createdByUser` → `User`                        | `SetNull`  | An API key (active or revoked) must outlive the user who created it; only the creator reference is cleared. |
 | `Session.user` → `User`                                | `Cascade`  | Sessions are ephemeral security state, not historical/audit records.                                        |
+| `Session.createdBySession` → `Session` (self)          | `SetNull`  | A rotation chain's earlier links may be pruned without invalidating the chain pointer of surviving rows.    |
+| `UserCredential.user` → `User`                         | `Cascade`  | A credential has no meaning once its user is gone; unlike `AuditLog`, this is not a historical record.      |
 | `AuditLog.organization` → `Organization`               | `Restrict` | Audit history is tied to a tenant that must exist.                                                          |
 | `AuditLog.actorUser` → `User`                          | `SetNull`  | Deleting or deactivating a user must never delete the audit events they caused.                             |
 | `AuditLog.actorApiKey` → `ApiKey`                      | `SetNull`  | Same rationale, for API-key actors.                                                                         |
@@ -268,8 +272,9 @@ Indexes were added for known query shapes, not speculatively:
   "this org's active test/live keys" lookup, plus a standalone `status`
   index; `secretHash` and `(organizationId, keyPrefix)` are unique
   constraints, which already provide their own lookup indexes.
-- `Session`: `userId`, `expiresAt` (for expiry sweeps); `tokenHash` is a
-  unique constraint, already indexed.
+- `Session`: `userId`, `expiresAt` (for expiry sweeps), `sessionFamilyId`
+  (for family-wide revocation on reuse detection); `tokenHash` and
+  `createdBySessionId` are unique constraints, already indexed.
 - `AuditLog`: `(organizationId, createdAt)` for the primary "this tenant's
   recent activity" query, `(resourceType, resourceId)` for resource
   lookup, `actorUserId`, `actorApiKeyId`, `requestId`, and `action` — one
@@ -285,7 +290,8 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
 - Uniqueness: `Organization.slug`, `User.email`,
   `(OrganizationMembership.organizationId, userId)`,
   `(ApiKey.organizationId, keyPrefix)`, `ApiKey.secretHash`,
-  `Session.tokenHash`.
+  `Session.tokenHash`, `Session.createdBySessionId`,
+  `UserCredential.userId`.
 - `NOT NULL` / nullability exactly as declared in the schema.
 - Enum value membership (PostgreSQL enum types).
 - `ON DELETE`/`ON UPDATE` behavior described above.
@@ -324,7 +330,13 @@ dangling references), not to validate external standards.
   plaintext key is never persisted anywhere and is not recoverable from
   this database. `keyPrefix` is a non-secret identifier only.
 - **Sessions:** `Session.tokenHash` stores only a hash of the session/
-  refresh token. The plaintext token is never persisted.
+  refresh token. The plaintext token is never persisted. Access JWTs are
+  never stored anywhere in this schema — they are stateless.
+- **User credentials:** `UserCredential.passwordHash` stores only an
+  Argon2id hash. The plaintext password is never persisted, logged, or
+  recoverable from this database. See
+  [`docs/architecture/authentication-and-access-control.md`](../../docs/architecture/authentication-and-access-control.md)
+  for hashing parameters and the full authentication design.
 - **Audit logs:** `AuditLog.metadata` must never contain secrets,
   plaintext credentials, session/API-key material, or raw card data —
   this is an application-layer discipline this schema cannot enforce by

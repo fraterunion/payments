@@ -6,6 +6,23 @@ const MIN_PORT = 1;
 const MAX_PORT = 65535;
 const MAX_SHUTDOWN_TIMEOUT_MS = 120_000;
 
+/**
+ * Minimum secret length required in production, in characters. A secret at
+ * or above this length, drawn from a reasonable character set (hex/base64),
+ * carries at least ~128 bits of entropy — enough that brute-forcing the
+ * secret is infeasible. Not enforced outside production so local
+ * development can use short, obviously-non-secret placeholder values.
+ */
+const MIN_PRODUCTION_SECRET_LENGTH = 32;
+const MIN_JWT_ACCESS_TTL_SECONDS = 60;
+const MAX_JWT_ACCESS_TTL_SECONDS = 3600;
+const MIN_SESSION_TTL_SECONDS = 60;
+const MAX_SESSION_TTL_SECONDS = 31_536_000;
+const MIN_ARGON2_MEMORY_KIB = 8192;
+const MAX_ARGON2_MEMORY_KIB = 1_048_576;
+const MAX_ARGON2_TIME_COST = 10;
+const MAX_ARGON2_PARALLELISM = 16;
+
 function booleanFlagSchema(defaultValue: 'true' | 'false') {
   return z
     .enum(['true', 'false'])
@@ -47,6 +64,44 @@ const rawEnvironmentSchema = z.object({
     .positive()
     .max(MAX_SHUTDOWN_TIMEOUT_MS)
     .default(10_000),
+  JWT_ACCESS_SECRET: z.string().min(1, 'JWT_ACCESS_SECRET is required'),
+  JWT_ACCESS_ISSUER: z
+    .string()
+    .min(1, 'JWT_ACCESS_ISSUER must not be empty')
+    .default('fraterunion-payments'),
+  JWT_ACCESS_AUDIENCE: z
+    .string()
+    .min(1, 'JWT_ACCESS_AUDIENCE must not be empty')
+    .default('fraterunion-payments-api'),
+  JWT_ACCESS_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(MIN_JWT_ACCESS_TTL_SECONDS)
+    .max(MAX_JWT_ACCESS_TTL_SECONDS)
+    .default(900),
+  SESSION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(MIN_SESSION_TTL_SECONDS)
+    .max(MAX_SESSION_TTL_SECONDS)
+    .default(2_592_000),
+  PASSWORD_ARGON2_MEMORY_KIB: z.coerce
+    .number()
+    .int()
+    .min(MIN_ARGON2_MEMORY_KIB)
+    .max(MAX_ARGON2_MEMORY_KIB)
+    .default(65_536),
+  PASSWORD_ARGON2_TIME_COST: z.coerce.number().int().min(1).max(MAX_ARGON2_TIME_COST).default(3),
+  PASSWORD_ARGON2_PARALLELISM: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_ARGON2_PARALLELISM)
+    .default(1),
+  API_KEY_HASH_SECRET: z.string().min(1, 'API_KEY_HASH_SECRET is required'),
+  AUTH_COOKIE_ENABLED: booleanFlagSchema('false'),
+  AUTH_COOKIE_SECURE: booleanFlagSchema('false'),
+  AUTH_COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 });
 
 export const environmentSchema = rawEnvironmentSchema
@@ -62,6 +117,18 @@ export const environmentSchema = rawEnvironmentSchema
     swaggerEnabled: raw.SWAGGER_ENABLED,
     trustProxy: raw.TRUST_PROXY,
     shutdownTimeoutMs: raw.SHUTDOWN_TIMEOUT_MS,
+    jwtAccessSecret: raw.JWT_ACCESS_SECRET,
+    jwtAccessIssuer: raw.JWT_ACCESS_ISSUER,
+    jwtAccessAudience: raw.JWT_ACCESS_AUDIENCE,
+    jwtAccessTtlSeconds: raw.JWT_ACCESS_TTL_SECONDS,
+    sessionTtlSeconds: raw.SESSION_TTL_SECONDS,
+    passwordArgon2MemoryKib: raw.PASSWORD_ARGON2_MEMORY_KIB,
+    passwordArgon2TimeCost: raw.PASSWORD_ARGON2_TIME_COST,
+    passwordArgon2Parallelism: raw.PASSWORD_ARGON2_PARALLELISM,
+    apiKeyHashSecret: raw.API_KEY_HASH_SECRET,
+    authCookieEnabled: raw.AUTH_COOKIE_ENABLED,
+    authCookieSecure: raw.AUTH_COOKIE_SECURE,
+    authCookieSameSite: raw.AUTH_COOKIE_SAME_SITE,
   }))
   .superRefine((environment, ctx) => {
     if (environment.nodeEnv === 'production' && environment.corsOrigins.includes('*')) {
@@ -69,6 +136,65 @@ export const environmentSchema = rawEnvironmentSchema
         code: z.ZodIssueCode.custom,
         path: ['CORS_ORIGINS'],
         message: 'CORS_ORIGINS must not include a wildcard ("*") in production.',
+      });
+    }
+
+    if (environment.sessionTtlSeconds <= environment.jwtAccessTtlSeconds) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SESSION_TTL_SECONDS'],
+        message: 'SESSION_TTL_SECONDS must exceed JWT_ACCESS_TTL_SECONDS.',
+      });
+    }
+
+    if (environment.nodeEnv === 'production') {
+      if (environment.jwtAccessSecret.length < MIN_PRODUCTION_SECRET_LENGTH) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['JWT_ACCESS_SECRET'],
+          message: `JWT_ACCESS_SECRET must be at least ${MIN_PRODUCTION_SECRET_LENGTH} characters in production.`,
+        });
+      }
+
+      if (environment.apiKeyHashSecret.length < MIN_PRODUCTION_SECRET_LENGTH) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['API_KEY_HASH_SECRET'],
+          message: `API_KEY_HASH_SECRET must be at least ${MIN_PRODUCTION_SECRET_LENGTH} characters in production.`,
+        });
+      }
+
+      if (environment.authCookieEnabled && !environment.authCookieSecure) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AUTH_COOKIE_SECURE'],
+          message:
+            'AUTH_COOKIE_SECURE must be true in production when AUTH_COOKIE_ENABLED is true.',
+        });
+      }
+    }
+
+    // Never reused, and never compared by logging either value.
+    if (
+      environment.jwtAccessSecret.length > 0 &&
+      environment.jwtAccessSecret === environment.apiKeyHashSecret
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['API_KEY_HASH_SECRET'],
+        message: 'API_KEY_HASH_SECRET must not equal JWT_ACCESS_SECRET.',
+      });
+    }
+
+    if (
+      environment.authCookieEnabled &&
+      environment.authCookieSameSite === 'none' &&
+      !environment.authCookieSecure
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AUTH_COOKIE_SAME_SITE'],
+        message: 'AUTH_COOKIE_SAME_SITE=none requires AUTH_COOKIE_SECURE=true.',
       });
     }
   });

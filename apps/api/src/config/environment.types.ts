@@ -3,6 +3,8 @@ import type { LogLevel, RuntimeEnvironment } from '@fraterunion-payments/config'
 /** DI token for the parsed, frozen `Environment` value. */
 export const APP_ENVIRONMENT = Symbol('APP_ENVIRONMENT');
 
+export type AuthCookieSameSite = 'lax' | 'strict' | 'none';
+
 export interface Environment {
   readonly nodeEnv: RuntimeEnvironment;
   readonly apiPort: number;
@@ -15,4 +17,16 @@ export interface Environment {
   readonly swaggerEnabled: boolean;
   readonly trustProxy: boolean;
   readonly shutdownTimeoutMs: number;
+  readonly jwtAccessSecret: string;
+  readonly jwtAccessIssuer: string;
+  readonly jwtAccessAudience: string;
+  readonly jwtAccessTtlSeconds: number;
+  readonly sessionTtlSeconds: number;
+  readonly passwordArgon2MemoryKib: number;
+  readonly passwordArgon2TimeCost: number;
+  readonly passwordArgon2Parallelism: number;
+  readonly apiKeyHashSecret: string;
+  readonly authCookieEnabled: boolean;
+  readonly authCookieSecure: boolean;
+  readonly authCookieSameSite: AuthCookieSameSite;
 }

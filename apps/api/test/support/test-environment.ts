@@ -18,6 +18,18 @@ export function createTestEnvironment(overrides: Partial<Environment> = {}): Env
     swaggerEnabled: true,
     trustProxy: false,
     shutdownTimeoutMs: 1000,
+    jwtAccessSecret: 'test-jwt-access-secret-not-for-production-use',
+    jwtAccessIssuer: 'fraterunion-payments',
+    jwtAccessAudience: 'fraterunion-payments-api',
+    jwtAccessTtlSeconds: 900,
+    sessionTtlSeconds: 2_592_000,
+    passwordArgon2MemoryKib: 8192,
+    passwordArgon2TimeCost: 2,
+    passwordArgon2Parallelism: 1,
+    apiKeyHashSecret: 'test-api-key-hash-secret-not-for-production-use',
+    authCookieEnabled: false,
+    authCookieSecure: false,
+    authCookieSameSite: 'lax',
     ...overrides,
   });
 }

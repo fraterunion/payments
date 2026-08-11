@@ -122,9 +122,9 @@ model Organization {
   @@map("organizations")
 }
 
-/// A person who can authenticate against FraterUnion Payments. This commit
-/// intentionally defines identity only: no password, OAuth, or
-/// authentication-provider fields. Authentication is future work.
+/// A person who can authenticate against FraterUnion Payments. Authentication
+/// secrets live on `UserCredential`, a separate model, so identity metadata
+/// stays independent of auth material (see `UserCredential`).
 model User {
   id String @id @default(uuid(7)) @db.Uuid
 
@@ -141,6 +141,7 @@ model User {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  credential     UserCredential?
   memberships    OrganizationMembership[]
   sessions       Session[]
   apiKeysCreated ApiKey[]                 @relation("ApiKeyCreatedBy")
@@ -148,6 +149,32 @@ model User {
 
   @@index([status])
   @@map("users")
+}
+
+/// A user's password authentication material. Deliberately separate from
+/// `User` so identity metadata (returned in API responses, joined broadly)
+/// never sits in the same table as a secret hash. Exactly one credential per
+/// user in this commit: no password history, no reset tokens, no OAuth
+/// linkage. Only the Argon2id hash is stored; the plaintext password is
+/// never persisted or logged (see docs/architecture/authentication-and-access-control.md).
+///
+/// Deletion policy: cascades with the user. A credential has no meaning once
+/// its user is gone, and unlike `AuditLog` it is not a historical record.
+model UserCredential {
+  id     String @id @default(uuid(7)) @db.Uuid
+  userId String @unique @map("user_id") @db.Uuid
+
+  /// Argon2id hash string (includes algorithm, version, and cost parameters).
+  /// Never the plaintext password.
+  passwordHash      String   @map("password_hash") @db.VarChar(255)
+  passwordChangedAt DateTime @default(now()) @map("password_changed_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_credentials")
 }
 
 /// The join between a User and an Organization, carrying the user's role
@@ -230,9 +257,22 @@ model ApiKey {
   @@map("api_keys")
 }
 
-/// A server-side authentication session for a User. Only a hash of the
-/// session/refresh token is stored; the plaintext token is never persisted.
-/// This commit does not model access-token storage.
+/// A server-side authentication session for a User, representing one link in
+/// a refresh-token rotation chain. Only a hash of the opaque refresh/session
+/// token is stored; the plaintext token is never persisted, and access JWTs
+/// are never stored at all (they are stateless and short-lived).
+///
+/// Rotation model: every successful `POST /auth/refresh` revokes the
+/// presented session (setting both `rotatedAt` and `revokedAt`) and creates a
+/// new session row linked via `createdBySessionId`. `sessionFamilyId` is
+/// shared by every row in the chain since the original login, so reuse of an
+/// already-rotated token (a token hash found on a row with `rotatedAt` set)
+/// can revoke the entire family in one statement — see
+/// docs/architecture/authentication-and-access-control.md. `rotatedAt` is
+/// distinct from `revokedAt`: `rotatedAt` means "legitimately superseded by
+/// rotation"; `revokedAt` means "no longer usable for any reason" and is
+/// always set alongside it. The general liveness check is always
+/// `revokedAt IS NULL AND expiresAt > now()`.
 ///
 /// Deletion policy: sessions are ephemeral security state, not historical
 /// financial or audit records, so they cascade-delete with their user.
@@ -245,8 +285,25 @@ model Session {
   /// the lookup index, so no separate index is added for it.
   tokenHash String @unique @map("token_hash") @db.VarChar(255)
 
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  /// Shared by every session in one rotation chain, assigned at login and
+  /// carried forward unchanged by every subsequent rotation.
+  sessionFamilyId String @default(uuid(7)) @map("session_family_id") @db.Uuid
+
+  /// The prior session this row's rotation replaced, if any. Null for the
+  /// session created at login.
+  createdBySessionId String? @unique @map("created_by_session_id") @db.Uuid
+
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  /// Set whenever this session becomes unusable, for any reason (logout,
+  /// logout-all, rotation, reuse-detected family revocation).
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  /// Set only when this session was superseded by a legitimate refresh
+  /// rotation. Always accompanied by `revokedAt`. A presented token whose
+  /// session already has `rotatedAt` set is a reused, already-rotated token.
+  rotatedAt  DateTime? @map("rotated_at") @db.Timestamptz(3)
+  /// Best-effort last-successful-use timestamp; updates are not required to
+  /// be transactionally strict.
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
 
   /// Native PostgreSQL `inet` type, supported cleanly by Prisma.
   ipAddress String? @map("ip_address") @db.Inet
@@ -257,8 +314,15 @@ model Session {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// Self-relation modeling the rotation chain. `onDelete: SetNull` matters
+  /// only for the eventual cleanup of long-expired rows; ordinary rotation
+  /// never deletes sessions.
+  createdBySession   Session? @relation("SessionRotationChain", fields: [createdBySessionId], references: [id], onDelete: SetNull)
+  rotatedIntoSession Session? @relation("SessionRotationChain")
+
   @@index([userId])
   @@index([expiresAt])
+  @@index([sessionFamilyId])
   @@map("sessions")
 }
 

@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "jest",
     "test:e2e": "jest --config test/jest-e2e.json",
-    "test:integration:db": "jest --config test/jest-integration.json"
+    "test:integration:db": "jest --config test/jest-integration.json",
+    "test:auth": "jest --testPathPatterns=src/auth",
+    "test:auth:integration": "jest --config test/jest-integration.json --testPathPatterns=auth"
   },
   "dependencies": {
     "@fraterunion-payments/config": "workspace:*",
@@ -20,10 +22,12 @@
     "@nestjs/core": "catalog:",
     "@nestjs/platform-express": "catalog:",
     "@nestjs/swagger": "catalog:",
+    "argon2": "catalog:",
     "class-transformer": "catalog:",
     "class-validator": "catalog:",
     "express": "catalog:",
     "helmet": "catalog:",
+    "jsonwebtoken": "catalog:",
     "nestjs-pino": "catalog:",
     "pino": "catalog:",
     "pino-http": "catalog:",
@@ -39,6 +43,7 @@
     "@nestjs/testing": "catalog:",
     "@types/express": "catalog:",
     "@types/jest": "catalog:",
+    "@types/jsonwebtoken": "catalog:",
     "@types/node": "catalog:",
     "@types/supertest": "catalog:",
     "eslint": "catalog:",

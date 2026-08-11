@@ -24,7 +24,8 @@ function configureSwagger(app: INestApplication, config: AppConfigService): void
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
-          description: 'Reserved for future JWT-based authentication. Not yet implemented.',
+          description:
+            'Short-lived access token issued by POST /auth/login, /auth/register, or /auth/refresh.',
         },
         'bearer',
       )
@@ -34,7 +35,7 @@ function configureSwagger(app: INestApplication, config: AppConfigService): void
           in: 'header',
           name: 'x-api-key',
           description:
-            'Reserved for future server-to-server API key authentication. Not yet implemented.',
+            'Organization-scoped server-to-server API key, e.g. fup_test_<prefix>_<secret>.',
         },
         'apiKey',
       )

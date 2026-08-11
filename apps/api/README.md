@@ -2,15 +2,19 @@
 
 ## Purpose
 
-The NestJS API is the FraterUnion Payments HTTP surface. This commit
-establishes production-ready API _infrastructure_ only: typed configuration,
-health checks, database lifecycle, structured logging, request correlation,
-global validation and error handling, versioning, and Swagger — no business
-domain (customers, payments, auth) exists yet. See
+The NestJS API is the FraterUnion Payments HTTP surface. It provides
+production-ready API infrastructure (typed configuration, health checks,
+database lifecycle, structured logging, request correlation, global
+validation and error handling, versioning, Swagger) and, as of the `auth`
+module, human authentication, organization-scoped API keys, and
+role/scope-based access control. Payment, customer, and provider domains
+remain out of scope. See
 [ADR-001](../../docs/decisions/ADR-001-nestjs-nextjs-and-typescript.md) for
-why NestJS was chosen, and
+why NestJS was chosen,
 [`../../docs/architecture/security-boundaries.md`](../../docs/architecture/security-boundaries.md)
-for the secret-handling rules this app follows.
+for the secret-handling rules this app follows, and
+[`../../docs/architecture/authentication-and-access-control.md`](../../docs/architecture/authentication-and-access-control.md)
+for the full authentication and access-control design.
 
 ## Module structure
 
@@ -20,7 +24,7 @@ src/
 ├── app.setup.ts          configureApp() — helmet, CORS, prefix/versioning, validation, Swagger
 ├── main.ts               bootstrap: load env, create app, configureApp, shutdown handlers, listen
 ├── common/
-│   ├── constants/         service identifiers, error codes, request-id format
+│   ├── constants/         service identifiers, error codes, request-id format, API-key scope catalog
 │   ├── decorators/        @RequestId() param decorator
 │   ├── exceptions/        AppException, ValidationException (+ class-validator → ErrorDetail[] mapping)
 │   ├── filters/           GlobalExceptionFilter
@@ -37,6 +41,18 @@ src/
 │   ├── database.module.ts      not global — only imported where DatabaseService is needed
 │   ├── database.service.ts     owns the Prisma client's connect/disconnect lifecycle
 │   └── database.types.ts
+├── audit/                       AuditService — append-only security-event recording (not global)
+├── auth/                         see below and
+│   │                             ../../docs/architecture/authentication-and-access-control.md
+│   ├── auth.module.ts
+│   ├── auth.controller.ts        POST /auth/register, /login, /refresh, /logout, /logout-all; GET /auth/me, /auth/context
+│   ├── api-keys.controller.ts    POST/GET /api-keys, POST /api-keys/:id/revoke
+│   ├── services/                  PasswordService, AccessTokenService, SessionService, ApiKeyService, AuthService, OrganizationMembershipService
+│   ├── guards/                    HumanJwtAuthGuard, ApiKeyAuthGuard, EitherAuthGuard, ActiveSessionGuard, OrganizationContextGuard, RequireRolesGuard, RequireScopesGuard
+│   ├── decorators/                @CurrentPrincipal(), @CurrentOrganizationContext(), @RequireRoles(...), @RequireScopes(...)
+│   ├── dto/                       RegisterDto, LoginDto, RefreshDto, CreateApiKeyDto, response DTOs
+│   ├── types/                     Principal, OrganizationContext, AuthenticatedRequest, request-context, JWT payload
+│   └── utils/                     crypto.util (opaque tokens, hashing), api-key-format.util, request-context.util, prisma-error.util
 ├── health/                     GET /health/live, GET /health/ready
 └── root/                       GET /api/v1
 ```
@@ -67,6 +83,13 @@ credentials into a log line).
 | `SWAGGER_ENABLED`     | no       | `true`                  | `true`/`false` only — not coerced from other truthy strings    |
 | `TRUST_PROXY`         | no       | `false`                 | `true`/`false` only                                            |
 | `SHUTDOWN_TIMEOUT_MS` | no       | `10000`                 | positive, capped at 120000                                     |
+
+Authentication-specific variables (`JWT_ACCESS_*`, `SESSION_TTL_SECONDS`,
+`PASSWORD_ARGON2_*`, `API_KEY_HASH_SECRET`, `AUTH_COOKIE_*`) are documented
+in full — including their production-only constraints and cross-field
+rules — in
+[`../../docs/architecture/authentication-and-access-control.md#environment-variables`](../../docs/architecture/authentication-and-access-control.md#environment-variables)
+rather than duplicated here.
 
 Configuration is exposed only through `AppConfigService`'s typed getters —
 nothing reads `process.env` outside `main.ts`'s single `loadEnvironment()`
@@ -111,14 +134,41 @@ GET /api/v1
 Confirms the versioned API is reachable. Not a health check — it does not
 query the database.
 
+## Authentication and API keys
+
+```http
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout          (requires human JWT)
+POST /api/v1/auth/logout-all      (requires human JWT)
+GET  /api/v1/auth/me              (requires human JWT)
+GET  /api/v1/auth/context         (requires human JWT or x-api-key; diagnostic only)
+
+POST /api/v1/api-keys             (requires human JWT + x-organization-id + OWNER/ADMIN/DEVELOPER)
+GET  /api/v1/api-keys             (requires human JWT + x-organization-id + OWNER/ADMIN/DEVELOPER)
+POST /api/v1/api-keys/:id/revoke  (requires human JWT + x-organization-id + OWNER/ADMIN/DEVELOPER)
+```
+
+Human authentication is email + password (Argon2id) with a short-lived
+access JWT (`Authorization: Bearer <token>`) and a rotating opaque refresh
+token. Server-to-server callers authenticate with an organization-scoped
+API key (`x-api-key: fup_test_...` / `fup_live_...`) instead. Organization
+context for a human request is resolved from an `x-organization-id` header
+against an active membership — never trusted from the header alone (see
+ADR-003) — while an API key is always bound to its own organization. Full
+design, including refresh-token rotation and reuse detection, the
+role/scope authorization model, and audit logging, is documented in
+[`../../docs/architecture/authentication-and-access-control.md`](../../docs/architecture/authentication-and-access-control.md).
+
 ## Swagger
 
 - UI: `GET /docs`
 - JSON: `GET /docs-json`
 - Controlled by `SWAGGER_ENABLED`; both routes return `404` when disabled.
-- Documents a Bearer (`bearer`) and an API-key (`x-api-key`) auth scheme as
-  reserved contract definitions for future use — **no guard currently
-  enforces either**; nothing is actually protected yet.
+- Documents a Bearer (`bearer`) and an API-key (`x-api-key`) auth scheme,
+  both enforced for real by `auth`'s guards — see
+  [`../../docs/architecture/authentication-and-access-control.md`](../../docs/architecture/authentication-and-access-control.md).
 - Swagger's own routes are mounted directly on the HTTP adapter and are
   unaffected by `API_PREFIX`/versioning.
 
@@ -206,9 +256,14 @@ Structured logging via `nestjs-pino`/`pino`
 - `req`/`res` are re-serialized narrowly (method, url, id / statusCode
   only) — full headers and bodies are never logged by default.
 - Redacted regardless: `authorization`, `cookie`, `x-api-key` headers,
-  `set-cookie` response header, and any `password`, `secret`, `token`,
-  `apiKey`, `databaseUrl`, `cardNumber`, or `cvc` field found in a logged
-  object, at any depth.
+  `set-cookie` response header, and any `password`, `passwordHash`,
+  `secret`, `secretHash`, `token`, `accessToken`, `refreshToken`, `apiKey`,
+  `rawKey`, `jwtAccessSecret`, `apiKeyHashSecret`, `databaseUrl`,
+  `cardNumber`, or `cvc` field found in a logged object, at any depth. This
+  is defense in depth on top of `req`/`res` re-serialization already
+  excluding bodies — no code in `auth`/`audit` deliberately logs a raw
+  request body or DTO, but the redact list guards against that changing by
+  accident.
 - No remote log transport is configured.
 
 ## Validation
@@ -218,17 +273,23 @@ A global `ValidationPipe` (`createValidationPipe()`) is configured with
 custom `exceptionFactory` that throws `ValidationException` (carrying
 structured `{ field, message }[]` details) instead of NestJS's default
 shape — so `GlobalExceptionFilter` handles it like any other `AppException`,
-with no format-sniffing. No business DTOs exist yet;
+with no format-sniffing.
 [`src/common/pipes/validation-pipe.factory.spec.ts`](./src/common/pipes/validation-pipe.factory.spec.ts)
 proves the configuration itself works, using a fixture DTO local to that
-test file only.
+test file; `src/auth/dto/` (`RegisterDto`, `LoginDto`, `RefreshDto`,
+`CreateApiKeyDto`) are the first real business DTOs exercising it in
+production — email/ISO-code/timezone validation, password length policy,
+and the closed API-key-scope catalog are all enforced here, before any
+request reaches a controller.
 
 ## Testing
 
 ```bash
-pnpm test:api               # unit tests (src/**/*.spec.ts) — no database required
-pnpm test:api:e2e           # e2e tests (test/*.e2e-spec.ts) — DatabaseService is faked
-pnpm test:api:integration:db  # real PostgreSQL smoke test — requires DATABASE_URL
+pnpm test:api                  # unit tests (src/**/*.spec.ts) — no database required
+pnpm test:api:e2e              # e2e tests (test/*.e2e-spec.ts) — DatabaseService is faked
+pnpm test:api:integration:db   # real PostgreSQL smoke test — requires DATABASE_URL
+pnpm test:api:auth             # unit tests scoped to src/auth — no database required
+pnpm test:api:auth:integration # real PostgreSQL auth suite — requires DATABASE_URL
 ```
 
 - **Unit tests** cover environment validation (valid config, missing/invalid
@@ -236,19 +297,47 @@ pnpm test:api:integration:db  # real PostgreSQL smoke test — requires DATABASE
   rejection, origin-list parsing, secrets never appearing in error
   messages), request-ID resolution, `GlobalExceptionFilter`'s envelope for
   every case above, `HealthService` against a controlled fake
-  `DatabaseService`, and the validation pipe fixture.
-- **e2e tests** (`test/app.e2e-spec.ts`) boot the real `AppModule` through
-  the real `configureApp()` setup with `DatabaseService` swapped for
-  `test/support/fake-database.service.ts` — so they exercise actual
-  middleware, filters, and HTTP configuration without needing PostgreSQL.
-  Cover: `/api/v1`, `/health/live`, `/health/ready` (both outcomes),
-  `/unknown-route`, request-ID behavior, security headers, CORS
-  allow/deny, and the Swagger on/off toggle.
+  `DatabaseService`, the validation pipe fixture, and — under `src/auth/`
+  and `src/audit/` — every auth service and guard against fakes/mocks
+  (password hashing and policy, JWT issue/verify including algorithm- and
+  claim-tampering rejection, opaque-token and API-key-format utilities,
+  session rotation/reuse-detection/concurrency-race handling,
+  API-key generation/hashing/lookup, all seven guards, and `AuthService`'s
+  orchestration of register/login/refresh/logout/me/context).
+- **e2e tests** (`test/app.e2e-spec.ts`, `test/auth.e2e-spec.ts`) boot the
+  real `AppModule` through the real `configureApp()` setup with
+  `DatabaseService` swapped for `test/support/fake-database.service.ts` —
+  so they exercise actual middleware, filters, and HTTP configuration
+  without needing PostgreSQL. `app.e2e-spec.ts` covers `/api/v1`,
+  `/health/live`, `/health/ready` (both outcomes), `/unknown-route`,
+  request-ID behavior, security headers, CORS allow/deny, and the Swagger
+  on/off toggle. `auth.e2e-spec.ts` covers only what can be verified
+  without a database: DTO validation (invalid email, weak password,
+  invalid ISO codes, malformed slug, mass-assignment rejection) and every
+  authentication guard's rejection path for a missing/malformed
+  credential — every other auth route requires real persisted state to
+  exercise meaningfully, which is why full auth-flow coverage lives in the
+  real-Postgres suite below instead of a second, heavily-mocked e2e file.
 - **`test:integration:db`** (`test/database.integration-spec.ts`) boots the
   app with the _real_ `DatabaseService` against `DATABASE_URL` and asserts
   `/health/ready` returns `200`. Skips (does not fail) when `DATABASE_URL`
   is unset, so it never blocks a developer without PostgreSQL configured;
   it is a distinct script, never part of `pnpm test`.
+- **`test:api:auth:integration`** (`test/auth.integration-spec.ts`) is the
+  authoritative correctness suite for authentication: it boots the app
+  against a real, migrated PostgreSQL database (same skip-when-unset
+  behavior as above) and exercises the full HTTP surface plus direct
+  database inspection — registration atomicity, email/slug uniqueness and
+  canonicalization, login, refresh rotation, reuse detection (including a
+  genuine concurrent-refresh race), logout/logout-all, `/me`,
+  cross-organization isolation, role re-resolution on every request,
+  API-key creation/authentication/listing/revocation (including the
+  `DEVELOPER`-cannot-create-`LIVE`-keys policy and cross-org revoke
+  safety), audit-record persistence, and a direct check that no plaintext
+  password, refresh token, or API-key secret is ever persisted anywhere.
+  Test data is created with unique, clearly-fictional identifiers and
+  deleted in `afterAll`, respecting the schema's `Restrict`/`Cascade`
+  relations (see `packages/database/README.md`).
 
 ## Graceful shutdown
 

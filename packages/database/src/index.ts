@@ -12,6 +12,7 @@ export {
 export type {
   Organization,
   User,
+  UserCredential,
   OrganizationMembership,
   ApiKey,
   Session,

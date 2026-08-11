@@ -59,4 +59,54 @@ export class AppConfigService {
   get shutdownTimeoutMs(): number {
     return this.environment.shutdownTimeoutMs;
   }
+
+  /** Intentionally has no equivalent HTTP-exposed getter/response field. */
+  get jwtAccessSecret(): string {
+    return this.environment.jwtAccessSecret;
+  }
+
+  get jwtAccessIssuer(): string {
+    return this.environment.jwtAccessIssuer;
+  }
+
+  get jwtAccessAudience(): string {
+    return this.environment.jwtAccessAudience;
+  }
+
+  get jwtAccessTtlSeconds(): number {
+    return this.environment.jwtAccessTtlSeconds;
+  }
+
+  get sessionTtlSeconds(): number {
+    return this.environment.sessionTtlSeconds;
+  }
+
+  get passwordArgon2MemoryKib(): number {
+    return this.environment.passwordArgon2MemoryKib;
+  }
+
+  get passwordArgon2TimeCost(): number {
+    return this.environment.passwordArgon2TimeCost;
+  }
+
+  get passwordArgon2Parallelism(): number {
+    return this.environment.passwordArgon2Parallelism;
+  }
+
+  /** Intentionally has no equivalent HTTP-exposed getter/response field. */
+  get apiKeyHashSecret(): string {
+    return this.environment.apiKeyHashSecret;
+  }
+
+  get authCookieEnabled(): boolean {
+    return this.environment.authCookieEnabled;
+  }
+
+  get authCookieSecure(): boolean {
+    return this.environment.authCookieSecure;
+  }
+
+  get authCookieSameSite(): Environment['authCookieSameSite'] {
+    return this.environment.authCookieSameSite;
+  }
 }
