@@ -380,10 +380,12 @@ the very next request is rejected.
 `API_KEY_SCOPES` (`apps/api/src/common/constants/api-key-scopes.constants.ts`)
 is the complete, closed vocabulary an API key can be assigned:
 `organizations:read`, `api_keys:read`, `api_keys:write`,
-`customers:read`, `customers:write`, `payments:read`, `payments:write`.
+`customers:read`, `customers:write`, `payments:read`, `payments:write`,
+`refunds:read`, `refunds:write`.
 New scopes are added only when the resource they guard actually exists.
-See [`customers.md`](./customers.md) and
-[`payments-persistence.md`](./payments-persistence.md) for RBAC.
+See [`customers.md`](./customers.md),
+[`payments-persistence.md`](./payments-persistence.md), and
+[`refunds.md`](./refunds.md) for RBAC.
 
 `@RequireScopes(...)` + `RequireScopesGuard` enforce that an `API_KEY`
 principal holds every listed scope. The guard is a **no-op for `USER`

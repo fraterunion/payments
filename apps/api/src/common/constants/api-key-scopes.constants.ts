@@ -10,6 +10,8 @@ export const API_KEY_SCOPES = [
   'customers:write',
   'payments:read',
   'payments:write',
+  'refunds:read',
+  'refunds:write',
 ] as const;
 
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];

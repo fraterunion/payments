@@ -47,7 +47,7 @@ describe('PaymentsService', () => {
     const paymentCreate = jest.fn();
     const service = createService({
       payment: { create: paymentCreate },
-      paymentCreateIdempotencyKey: { findUnique: jest.fn() },
+      idempotencyRecord: { findUnique: jest.fn() },
     });
     await expect(
       service.create(

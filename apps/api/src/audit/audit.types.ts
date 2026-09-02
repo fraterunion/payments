@@ -30,6 +30,12 @@ export const AUDIT_ACTIONS = {
   PAYMENT_SUCCEEDED: 'payment.succeeded',
   PAYMENT_FAILED: 'payment.failed',
   PAYMENT_CANCELED: 'payment.canceled',
+  PAYMENT_PARTIALLY_REFUNDED: 'payment.partially_refunded',
+  PAYMENT_REFUNDED: 'payment.refunded',
+  REFUND_CREATED: 'refund.created',
+  REFUND_PROCESSING_STARTED: 'refund.processing_started',
+  REFUND_SUCCEEDED: 'refund.succeeded',
+  REFUND_FAILED: 'refund.failed',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});
@@ -42,6 +48,7 @@ export const AUDIT_RESOURCE_TYPES = {
   CUSTOMER: 'customer',
   CUSTOMER_PROVIDER_MAPPING: 'customer_provider_mapping',
   PAYMENT: 'payment',
+  REFUND: 'refund',
 } as const;
 
 export type AuditResourceType =

@@ -17,7 +17,9 @@
     "test:customers": "jest --testPathPatterns=customers",
     "test:customers:integration": "jest --config test/jest-integration.json --testPathPatterns=customers",
     "test:payments": "jest --testPathPatterns=payments",
-    "test:payments:integration": "jest --config test/jest-integration.json --testPathPatterns=payments"
+    "test:payments:integration": "jest --config test/jest-integration.json --testPathPatterns=payments",
+    "test:refunds": "jest --testPathPatterns=refunds",
+    "test:refunds:integration": "jest --config test/jest-integration.json --testPathPatterns=refunds"
   },
   "dependencies": {
     "@fraterunion-payments/config": "workspace:*",

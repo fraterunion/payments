@@ -18,16 +18,17 @@ The monorepo foundation, core tenancy schema, authentication and
 organization access control, immutable tenant audit logging, the
 transactional outbox / durable inbox substrate, the provider-neutral
 payment domain, provider contracts/registry, canonical customers with
-provider mappings, and persisted canonical payments (create/get/list plus
-internal lifecycle, without provider execution) are in place. Provider
-adapters, refunds, ledger posting, reconciliation, billing, and outbound
-organization webhooks are not implemented yet.
+provider mappings, persisted canonical payments, and persisted canonical
+refunds (create/get/list plus internal lifecycle, without provider
+execution) are in place. Provider adapters, ledger posting,
+reconciliation, billing, and outbound organization webhooks are not
+implemented yet.
 
 ## Monorepo structure
 
 ```text
 apps/
-  api/      NestJS API (auth, tenancy, customers, canonical payments)
+  api/      NestJS API (auth, tenancy, customers, payments, refunds)
   admin/    Next.js App Router admin console
   docs/     Next.js App Router developer documentation site
   worker/   Outbox worker (PostgreSQL poll, claim, dispatch)

@@ -117,8 +117,11 @@ PARTIALLY_REFUNDED
 REFUNDED
 ```
 
-`PARTIALLY_REFUNDED` and `REFUNDED` exist on the enum for alignment.
-This commit does not implement refund transitions or public refund APIs.
+`PARTIALLY_REFUNDED` and `REFUNDED` exist on the enum for alignment with
+`payment-core`. Refund persistence, capacity reservation, and the public
+refund API are implemented in
+[`refunds.md`](./refunds.md). This payment commit still does not call
+providers.
 
 Creation starts in `CREATED` with authorized/captured/refunded amounts
 equal to `0`. It does **not** enter `AUTHORIZING` — provider execution
@@ -170,20 +173,12 @@ loser receives `PAYMENT_INVALID_TRANSITION`.
 
 ## Idempotent creation
 
-Payment creation is financial and must be idempotent. The original
-roadmap placed generic financial idempotency in a later commit. Leaving
-`POST /payments` non-idempotent was not acceptable, so this commit
-implements a **narrow** durable record:
-
-```text
-PaymentCreateIdempotencyKey
-  organizationId + SHA-256(Idempotency-Key) → unique
-  requestFingerprint
-  paymentId
-```
-
-Scope is implicitly `payment.create`. Capture/refund/general operation
-idempotency is still deferred and can be generalized later.
+Payment creation is financial and must be idempotent. Durable records now
+live on the generalized `idempotency_records` table (unique
+`(organizationId, scope, keyHash)`), with `scope = payment.create` and
+`resourceType = payment`. See [`refunds.md`](./refunds.md) for the
+refund.create scope and the migration from the former narrow
+`payment_create_idempotency_keys` table.
 
 The raw `Idempotency-Key` header is hashed, not stored. The fingerprint
 is SHA-256 of canonically serialized:

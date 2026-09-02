@@ -9,8 +9,9 @@ this model; no provider-specific status may be exposed outside the
 adapter layer. The canonical state machine is implemented in
 `@fraterunion-payments/payment-core`. Persistence and the public
 create/get/list API are implemented; see
-[`payments-persistence.md`](./payments-persistence.md). Provider calls
-and public lifecycle mutation endpoints are not implemented yet.
+[`payments-persistence.md`](./payments-persistence.md). Canonical refund
+persistence is implemented; see [`refunds.md`](./refunds.md). Provider
+calls and public lifecycle mutation endpoints are not implemented yet.
 
 Last updated: 2026-09-02
 

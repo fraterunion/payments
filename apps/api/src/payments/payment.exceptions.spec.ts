@@ -18,11 +18,11 @@ describe('payment error mapping', () => {
     expect(mapped?.message).not.toMatch(/prisma|P20/i);
   });
 
-  it('treats the payment-create idempotency unique index as replay, not a mapped HTTP error', () => {
+  it('treats the financial idempotency unique index as replay, not a mapped HTTP error', () => {
     const error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
       code: 'P2002',
       clientVersion: 'test',
-      meta: { target: 'payment_create_idempotency_org_key_uidx' },
+      meta: { target: 'idempotency_records_org_scope_key_uidx' },
     });
     expect(isIdempotencyUnique(error)).toBe(true);
     expect(mapPaymentPrismaError(error)).toBeUndefined();

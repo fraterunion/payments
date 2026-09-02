@@ -3,6 +3,13 @@ import { Prisma } from '@fraterunion-payments/database';
 import { isPaymentDomainError } from '@fraterunion-payments/payment-core';
 import { AppException } from '../common/exceptions/app.exception';
 import { ERROR_CODES, type ErrorCode } from '../common/constants/error-codes.constants';
+import { isIdempotencyUnique as isFinancialIdempotencyUnique } from '../idempotency/idempotency.exceptions';
+
+export {
+  IdempotencyKeyConflictException,
+  IdempotencyKeyInvalidException,
+  IdempotencyKeyRequiredException,
+} from '../idempotency/idempotency.exceptions';
 
 export class PaymentException extends AppException {
   constructor(code: ErrorCode, message: string, status: HttpStatus) {
@@ -41,32 +48,6 @@ export class PaymentValidationException extends PaymentException {
 export class InvalidPaymentAmountException extends PaymentException {
   constructor(message: string) {
     super(ERROR_CODES.INVALID_PAYMENT_AMOUNT, message, HttpStatus.BAD_REQUEST);
-  }
-}
-
-export class IdempotencyKeyRequiredException extends PaymentException {
-  constructor() {
-    super(
-      ERROR_CODES.IDEMPOTENCY_KEY_REQUIRED,
-      'Idempotency-Key is required for payment creation.',
-      HttpStatus.BAD_REQUEST,
-    );
-  }
-}
-
-export class IdempotencyKeyInvalidException extends PaymentException {
-  constructor(message: string) {
-    super(ERROR_CODES.IDEMPOTENCY_KEY_INVALID, message, HttpStatus.BAD_REQUEST);
-  }
-}
-
-export class IdempotencyKeyConflictException extends PaymentException {
-  constructor() {
-    super(
-      ERROR_CODES.IDEMPOTENCY_KEY_CONFLICT,
-      'This idempotency key was already used with a different payment request.',
-      HttpStatus.CONFLICT,
-    );
   }
 }
 
@@ -132,15 +113,7 @@ export function mapPaymentPrismaError(error: unknown): PaymentException | undefi
 }
 
 export function isIdempotencyUnique(error: unknown): boolean {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
-    return false;
-  }
-  const target = constraintTarget(error);
-  return (
-    target.includes('payment_create_idempotency') ||
-    target.includes('key_hash') ||
-    target.includes('keyhash')
-  );
+  return isFinancialIdempotencyUnique(error);
 }
 
 function constraintTarget(error: Prisma.PrismaClientKnownRequestError): string {

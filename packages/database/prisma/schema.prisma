@@ -1,4 +1,4 @@
-// FraterUnion Payments — core tenancy, customer, and payment schema.
+// FraterUnion Payments — core tenancy, customer, payment, and refund schema.
 // See packages/database/README.md for naming conventions, deletion policy,
 // indexing rationale, and the database-enforced vs. application-enforced
 // validation boundary. See docs/decisions/ADR-002 and ADR-003.
@@ -146,6 +146,28 @@ enum PaymentFailureCategory {
   @@map("payment_failure_category")
 }
 
+/// Canonical refund states. Values match payment-core `REFUND_STATES` exactly.
+/// There is no CANCELED refund state.
+enum RefundStatus {
+  CREATED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+
+  @@map("refund_status")
+}
+
+/// Canonical refund reasons. Values match payment-core `REFUND_REASONS`.
+enum RefundReason {
+  CUSTOMER_REQUEST
+  DUPLICATE
+  FRAUDULENT
+  PRODUCT_OR_SERVICE
+  OTHER
+
+  @@map("refund_reason")
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -184,15 +206,16 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships                  OrganizationMembership[]
-  apiKeys                      ApiKey[]
-  auditLogs                    AuditLog[]
-  outboxEvents                 OutboxEvent[]
-  inboxEvents                  InboxEvent[]
-  customers                    Customer[]
-  customerProviderMappings     CustomerProviderMapping[]
-  payments                     Payment[]
-  paymentCreateIdempotencyKeys PaymentCreateIdempotencyKey[]
+  memberships              OrganizationMembership[]
+  apiKeys                  ApiKey[]
+  auditLogs                AuditLog[]
+  outboxEvents             OutboxEvent[]
+  inboxEvents              InboxEvent[]
+  customers                Customer[]
+  customerProviderMappings CustomerProviderMapping[]
+  payments                 Payment[]
+  refunds                  Refund[]
+  idempotencyRecords       IdempotencyRecord[]
 
   @@index([status])
   @@index([type])
@@ -685,9 +708,9 @@ model Payment {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  customer             Customer?                    @relation(fields: [customerId, organizationId], references: [id, organizationId], onDelete: Restrict)
-  createIdempotencyKey PaymentCreateIdempotencyKey?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customer     Customer?    @relation(fields: [customerId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  refunds      Refund[]
 
   @@unique([id, organizationId])
   @@index([organizationId, createdAt])
@@ -697,23 +720,81 @@ model Payment {
   @@map("payments")
 }
 
-/// Narrow durable idempotency record for `POST /payments` only.
-/// Generalized financial-operation idempotency is deferred (original
-/// roadmap Commit 14). Unique per `(organizationId, keyHash)` where
-/// `keyHash` is SHA-256 of the `Idempotency-Key` header. The raw key is
-/// not stored. Records currently remain indefinitely — no silent expiry.
-model PaymentCreateIdempotencyKey {
+/// Durable financial-operation idempotency. Absorbs the former narrow
+/// `payment_create_idempotency_keys` table. Unique per
+/// `(organizationId, scope, keyHash)` where `keyHash` is SHA-256 of the
+/// `Idempotency-Key` header. The raw key is not stored. `resourceId` binds
+/// the key to a durable aggregate (payment, refund, …) rather than caching
+/// an HTTP body. Records currently remain indefinitely — no silent expiry.
+///
+/// Scopes in this commit: `payment.create`, `refund.create`. Capture,
+/// cancel, and provider-operation scopes remain for a later hardening
+/// commit. There is no polymorphic FK to the resource — creation of the
+/// resource and this row share one transaction.
+model IdempotencyRecord {
   id                 String @id @default(uuid(7)) @db.Uuid
   organizationId     String @map("organization_id") @db.Uuid
+  /// Stable operation name, for example `payment.create`.
+  scope              String @db.VarChar(64)
   keyHash            String @map("key_hash") @db.Char(64)
   requestFingerprint String @map("request_fingerprint") @db.Char(64)
-  paymentId          String @unique @map("payment_id") @db.Uuid
+  resourceType       String @map("resource_type") @db.VarChar(64)
+  resourceId         String @map("resource_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  payment      Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
 
-  @@unique([organizationId, keyHash], map: "payment_create_idempotency_org_key_uidx")
-  @@map("payment_create_idempotency_keys")
+  @@unique([organizationId, scope, keyHash], map: "idempotency_records_org_scope_key_uidx")
+  @@unique([scope, resourceId], map: "idempotency_records_scope_resource_uidx")
+  @@index([organizationId, resourceType, resourceId], map: "idempotency_records_org_resource_idx")
+  @@map("idempotency_records")
+}
+
+/// Canonical FraterUnion Payments refund. This is not a Stripe Refund or
+/// any other provider object. Provider refund IDs are intentionally absent
+/// — a later execution/mapping model can attach provider attempts without
+/// assuming one refund equals one provider object forever.
+///
+/// `CREATED` is an internal refund request, not proof that money moved
+/// externally. `PROCESSING` / `SUCCEEDED` / `FAILED` are internal
+/// lifecycle transitions for future orchestration.
+///
+/// Capacity reservation: CREATED + PROCESSING + SUCCEEDED consume captured
+/// funds. FAILED releases the reservation. `Payment.refundedAmount` is the
+/// sum of SUCCEEDED refunds only.
+///
+/// Composite FK `(paymentId, organizationId) → payments(id, organizationId)`
+/// makes cross-tenant attach impossible. Lock order is Payment then Refund.
+model Refund {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  paymentId      String @map("payment_id") @db.Uuid
+
+  status RefundStatus
+
+  /// Copied from the parent payment at creation. Must match payment currency.
+  currency String @db.VarChar(3)
+  amount   BigInt
+
+  reason RefundReason?
+
+  failureCategory  PaymentFailureCategory? @map("failure_category")
+  failureCode      String?                 @map("failure_code") @db.VarChar(64)
+  failureMessage   String?                 @map("failure_message") @db.VarChar(512)
+  failureRetryable Boolean?                @map("failure_retryable")
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment      Payment      @relation(fields: [paymentId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([id, organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, paymentId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@map("refunds")
 }

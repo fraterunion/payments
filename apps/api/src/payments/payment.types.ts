@@ -4,6 +4,9 @@ import type {
   PaymentStatus,
 } from '@fraterunion-payments/database';
 import type { PaymentFailure } from '@fraterunion-payments/payment-core';
+import { IDEMPOTENCY_KEY_MAX_LENGTH, IDEMPOTENCY_SCOPES } from '../idempotency/idempotency.types';
+
+export { IDEMPOTENCY_KEY_MAX_LENGTH };
 
 export const PAYMENT_LIST_DEFAULT_LIMIT = 50;
 export const PAYMENT_LIST_MAX_LIMIT = 100;
@@ -12,8 +15,7 @@ export const PAYMENT_METADATA_MAX_DEPTH = 8;
 export const PAYMENT_DESCRIPTION_MAX_LENGTH = 500;
 export const PAYMENT_FAILURE_MESSAGE_MAX_LENGTH = 512;
 export const PAYMENT_FAILURE_CODE_MAX_LENGTH = 64;
-export const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
-export const PAYMENT_CREATE_IDEMPOTENCY_SCOPE = 'payment.create';
+export const PAYMENT_CREATE_IDEMPOTENCY_SCOPE = IDEMPOTENCY_SCOPES.PAYMENT_CREATE;
 
 export const PAYMENT_READ_ROLES = ['OWNER', 'ADMIN', 'DEVELOPER', 'ANALYST', 'SUPPORT'] as const;
 export const PAYMENT_WRITE_ROLES = ['OWNER', 'ADMIN', 'DEVELOPER'] as const;

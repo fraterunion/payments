@@ -325,12 +325,14 @@ if (databaseUrl === undefined) {
               requestedAmount: 1000n,
             },
           });
-          await tx.paymentCreateIdempotencyKey.create({
+          await tx.idempotencyRecord.create({
             data: {
               organizationId,
+              scope: 'payment.create',
               keyHash,
               requestFingerprint: fingerprint,
-              paymentId: created.id,
+              resourceType: 'payment',
+              resourceId: created.id,
             },
           });
           await audit.write(tx, {
@@ -343,7 +345,7 @@ if (databaseUrl === undefined) {
         }),
       ).rejects.toThrow(/forbidden/);
       expect(await db.payment.count({ where: { organizationId } })).toBe(0);
-      expect(await db.paymentCreateIdempotencyKey.count({ where: { organizationId } })).toBe(0);
+      expect(await db.idempotencyRecord.count({ where: { organizationId } })).toBe(0);
     });
 
     it('does not enqueue payment outbox events', async () => {

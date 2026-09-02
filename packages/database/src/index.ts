@@ -14,6 +14,8 @@ export {
   PaymentStatus,
   PaymentCaptureMethod,
   PaymentFailureCategory,
+  RefundStatus,
+  RefundReason,
 } from '../generated/client/index.js';
 
 export type {
@@ -29,7 +31,8 @@ export type {
   Customer,
   CustomerProviderMapping,
   Payment,
-  PaymentCreateIdempotencyKey,
+  Refund,
+  IdempotencyRecord,
 } from '../generated/client/index.js';
 
 export { createPrismaClient } from './client.js';

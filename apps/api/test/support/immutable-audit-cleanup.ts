@@ -26,9 +26,9 @@ export type TenantCleanupTarget = {
  * Does **not** sweep the entire live namespace — parallel Jest workers share
  * this database and must not delete each other's in-flight fixtures.
  *
- * Order respects RESTRICT FKs: mappings → payment create idempotency →
- * payments → customers → outbox/inbox → API keys → audit (trigger
- * disabled only for this delete) → users → organizations.
+ * Order respects RESTRICT FKs: mappings → refunds → payments →
+ * idempotency records → customers → outbox/inbox → API keys → audit
+ * (trigger disabled only for this delete) → users → organizations.
  */
 export async function deleteTenantsForTests(
   db: PrismaClient,
@@ -45,8 +45,9 @@ export async function deleteTenantsForTests(
   if (targets.organizationIds.length > 0) {
     const orgFilter = { organizationId: { in: [...targets.organizationIds] } };
     await db.customerProviderMapping.deleteMany({ where: orgFilter });
-    await db.paymentCreateIdempotencyKey.deleteMany({ where: orgFilter });
+    await db.refund.deleteMany({ where: orgFilter });
     await db.payment.deleteMany({ where: orgFilter });
+    await db.idempotencyRecord.deleteMany({ where: orgFilter });
     await db.customer.deleteMany({ where: orgFilter });
     await db.outboxEvent.deleteMany({ where: orgFilter });
     await db.inboxEvent.deleteMany({ where: orgFilter });
@@ -149,6 +150,9 @@ async function deleteAuditLogsForTests(
     return;
   }
 
+  // Serialize trigger disable/delete across Jest workers that share this
+  // database. Production never disables the append-only trigger.
+  await db.$executeRaw`SELECT pg_advisory_lock(87236401)`;
   let triggerDisabled = false;
   try {
     await db.$executeRaw`ALTER TABLE audit_logs DISABLE TRIGGER USER`;
@@ -167,5 +171,6 @@ async function deleteAuditLogsForTests(
     if (triggerDisabled) {
       await db.$executeRaw`ALTER TABLE audit_logs ENABLE TRIGGER USER`;
     }
+    await db.$executeRaw`SELECT pg_advisory_unlock(87236401)`;
   }
 }

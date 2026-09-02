@@ -177,6 +177,21 @@ integer minor units as a decimal string (`"12500"`). Provider execution
 and public lifecycle mutation endpoints are intentionally absent. See
 [`../../docs/architecture/payments-persistence.md`](../../docs/architecture/payments-persistence.md).
 
+## Refunds
+
+```http
+POST /api/v1/payments/:paymentId/refunds   (Idempotency-Key required; OWNER/ADMIN/DEVELOPER or refunds:write)
+GET  /api/v1/payments/:paymentId/refunds   (OWNER/ADMIN/DEVELOPER/ANALYST/SUPPORT or refunds:read)
+GET  /api/v1/refunds
+GET  /api/v1/refunds/:refundId
+```
+
+Creates a canonical FraterUnion Payments refund in `CREATED`. Amount is
+integer minor units as a decimal string (`"5000"`). Currency is taken
+from the payment. `CREATED` reserves capacity; it does not mean money
+moved externally. Public lifecycle mutation endpoints are intentionally
+absent. See [`../../docs/architecture/refunds.md`](../../docs/architecture/refunds.md).
+
 ## Swagger
 
 - UI: `GET /docs`

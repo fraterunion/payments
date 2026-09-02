@@ -46,6 +46,7 @@ import {
   mapPaymentPrismaError,
 } from './payment.exceptions';
 import {
+  PAYMENT_CREATE_IDEMPOTENCY_SCOPE,
   PAYMENT_DESCRIPTION_MAX_LENGTH,
   PAYMENT_FAILURE_CODE_MAX_LENGTH,
   PAYMENT_FAILURE_MESSAGE_MAX_LENGTH,
@@ -145,12 +146,14 @@ export class PaymentsService {
           },
         });
 
-        await tx.paymentCreateIdempotencyKey.create({
+        await tx.idempotencyRecord.create({
           data: {
             organizationId: input.organizationId,
+            scope: PAYMENT_CREATE_IDEMPOTENCY_SCOPE,
             keyHash,
             requestFingerprint: fingerprint,
-            paymentId: created.id,
+            resourceType: 'payment',
+            resourceId: created.id,
           },
         });
 
@@ -479,9 +482,13 @@ export class PaymentsService {
     keyHash: string,
     fingerprint: string,
   ): Promise<PaymentRow | undefined> {
-    const record = await this.databaseService.getClient().paymentCreateIdempotencyKey.findUnique({
+    const record = await this.databaseService.getClient().idempotencyRecord.findUnique({
       where: {
-        organizationId_keyHash: { organizationId, keyHash },
+        organizationId_scope_keyHash: {
+          organizationId,
+          scope: PAYMENT_CREATE_IDEMPOTENCY_SCOPE,
+          keyHash,
+        },
       },
     });
     if (record === null) {
@@ -490,7 +497,7 @@ export class PaymentsService {
     if (record.requestFingerprint !== fingerprint) {
       throw new IdempotencyKeyConflictException();
     }
-    return this.get(organizationId, record.paymentId);
+    return this.get(organizationId, record.resourceId);
   }
 }
 
