@@ -15,11 +15,14 @@
     "test:auth": "jest --testPathPatterns=src/auth",
     "test:auth:integration": "jest --config test/jest-integration.json --testPathPatterns=auth",
     "test:customers": "jest --testPathPatterns=customers",
-    "test:customers:integration": "jest --config test/jest-integration.json --testPathPatterns=customers"
+    "test:customers:integration": "jest --config test/jest-integration.json --testPathPatterns=customers",
+    "test:payments": "jest --testPathPatterns=payments",
+    "test:payments:integration": "jest --config test/jest-integration.json --testPathPatterns=payments"
   },
   "dependencies": {
     "@fraterunion-payments/config": "workspace:*",
     "@fraterunion-payments/database": "workspace:*",
+    "@fraterunion-payments/payment-core": "workspace:*",
     "@fraterunion-payments/provider-contracts": "workspace:*",
     "@nestjs/common": "catalog:",
     "@nestjs/core": "catalog:",

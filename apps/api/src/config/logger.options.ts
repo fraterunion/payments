@@ -7,6 +7,7 @@ const REDACT_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
   'req.headers["x-api-key"]',
+  'req.headers["idempotency-key"]',
   'res.headers["set-cookie"]',
   'req.body.password',
   'req.body.secret',

@@ -20,6 +20,16 @@ export const AUDIT_ACTIONS = {
   CUSTOMER_UPDATED: 'customer.updated',
   CUSTOMER_ARCHIVED: 'customer.archived',
   CUSTOMER_PROVIDER_MAPPING_CREATED: 'customer.provider_mapping_created',
+  PAYMENT_CREATED: 'payment.created',
+  PAYMENT_REQUIRES_PAYMENT_METHOD: 'payment.requires_payment_method',
+  PAYMENT_AUTHORIZATION_STARTED: 'payment.authorization_started',
+  PAYMENT_REQUIRES_ACTION: 'payment.requires_action',
+  PAYMENT_AUTHORIZATION_RESUMED: 'payment.authorization_resumed',
+  PAYMENT_AUTHORIZED: 'payment.authorized',
+  PAYMENT_CAPTURE_STARTED: 'payment.capture_started',
+  PAYMENT_SUCCEEDED: 'payment.succeeded',
+  PAYMENT_FAILED: 'payment.failed',
+  PAYMENT_CANCELED: 'payment.canceled',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});
@@ -31,6 +41,7 @@ export const AUDIT_RESOURCE_TYPES = {
   API_KEY: 'api_key',
   CUSTOMER: 'customer',
   CUSTOMER_PROVIDER_MAPPING: 'customer_provider_mapping',
+  PAYMENT: 'payment',
 } as const;
 
 export type AuditResourceType =

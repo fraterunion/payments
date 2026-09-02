@@ -5,10 +5,11 @@
 The NestJS API is the FraterUnion Payments HTTP surface. It provides
 production-ready API infrastructure (typed configuration, health checks,
 database lifecycle, structured logging, request correlation, global
-validation and error handling, versioning, Swagger) and, as of the `auth`
-and `customers` modules, human authentication, organization-scoped API keys,
-role/scope-based access control, and tenant-safe customers with provider
-mappings. Payment, billing, and provider adapters remain out of scope. See
+validation and error handling, versioning, Swagger) and, as of the `auth`,
+`customers`, and `payments` modules, human authentication, organization-scoped
+API keys, role/scope-based access control, tenant-safe customers, and
+canonical payment create/get/list (internal lifecycle only; no provider
+execution). Billing and provider adapters remain out of scope. See
 [ADR-001](../../docs/decisions/ADR-001-nestjs-nextjs-and-typescript.md) for
 why NestJS was chosen,
 [`../../docs/architecture/security-boundaries.md`](../../docs/architecture/security-boundaries.md)
@@ -43,6 +44,7 @@ src/
 │   └── database.types.ts
 ├── audit/                       AuditService.write/list — append-only, tenant-scoped (not global; no public CRUD)
 ├── customers/                    Customer CRUD/archive, provider-mapping service (create is service-only)
+├── payments/                     Canonical payment create/get/list; internal lifecycle; create idempotency
 ├── auth/                         see below and
 │   │                             ../../docs/architecture/authentication-and-access-control.md
 │   ├── auth.module.ts
@@ -162,6 +164,19 @@ design, including refresh-token rotation and reuse detection, the
 role/scope authorization model, and audit logging, is documented in
 [`../../docs/architecture/authentication-and-access-control.md`](../../docs/architecture/authentication-and-access-control.md).
 
+## Payments
+
+```http
+POST /api/v1/payments            (Idempotency-Key required; OWNER/ADMIN/DEVELOPER or payments:write)
+GET  /api/v1/payments            (OWNER/ADMIN/DEVELOPER/ANALYST/SUPPORT or payments:read)
+GET  /api/v1/payments/:paymentId
+```
+
+Creates a canonical FraterUnion Payments payment in `CREATED`. Amount is
+integer minor units as a decimal string (`"12500"`). Provider execution
+and public lifecycle mutation endpoints are intentionally absent. See
+[`../../docs/architecture/payments-persistence.md`](../../docs/architecture/payments-persistence.md).
+
 ## Swagger
 
 - UI: `GET /docs`
@@ -239,7 +254,9 @@ unmatched routes, and unexpected errors — is normalized by
 `details` is only present when there is field-level information to give
 (currently: validation failures). Stable codes:
 `VALIDATION_ERROR`, `NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`,
-`CONFLICT`, `DEPENDENCY_UNAVAILABLE` (reserved for future use), `INTERNAL_ERROR`.
+`CONFLICT`, payment/customer-specific codes (`PAYMENT_NOT_FOUND`,
+`IDEMPOTENCY_KEY_CONFLICT`, …), `DEPENDENCY_UNAVAILABLE` (reserved for
+future use), `INTERNAL_ERROR`.
 Every `5xx` response uses the fixed message `"An unexpected error occurred."`
 — never a raw error message, database error, or stack trace; the real
 error and stack are logged server-side with the request ID instead.
@@ -293,6 +310,8 @@ pnpm test:api:auth             # unit tests scoped to src/auth — no database r
 pnpm test:api:auth:integration # real PostgreSQL auth suite — requires DATABASE_URL
 # Audit immutability / query tests live in test/audit.integration-spec.ts
 # and run with the same jest-integration config as auth integration.
+# Payment real-PG tests: test/payments.integration-spec.ts
+# Payment HTTP e2e: test/payments.e2e-spec.ts
 ```
 
 - **Unit tests** cover environment validation (valid config, missing/invalid
@@ -343,7 +362,7 @@ pnpm test:api:auth:integration # real PostgreSQL auth suite — requires DATABAS
   throws. The shared helper deletes tracked IDs, historical `cust-`
   leftovers, and namespace rows older than one hour — never the live
   fixtures of a parallel Jest worker. Delete order is RESTRICT-safe:
-  mappings, customers, outbox/inbox, API keys, audit (user triggers
+  mappings, payment idempotency keys, payments, customers, outbox/inbox, API keys, audit (user triggers
   disabled only for that delete; production code never does this),
   users, then organizations. Seed `fraterunion` /
   `@fraterunion.local` is never removed. See

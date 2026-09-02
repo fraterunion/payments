@@ -17,16 +17,17 @@ processor itself.
 The monorepo foundation, core tenancy schema, authentication and
 organization access control, immutable tenant audit logging, the
 transactional outbox / durable inbox substrate, the provider-neutral
-payment domain, provider contracts/registry, and canonical customers with
-provider mappings are in place. Payment persistence, provider adapters,
-ledger posting, reconciliation, billing, and outbound organization
-webhooks are not implemented yet.
+payment domain, provider contracts/registry, canonical customers with
+provider mappings, and persisted canonical payments (create/get/list plus
+internal lifecycle, without provider execution) are in place. Provider
+adapters, refunds, ledger posting, reconciliation, billing, and outbound
+organization webhooks are not implemented yet.
 
 ## Monorepo structure
 
 ```text
 apps/
-  api/      NestJS API (auth, tenancy, customers; no payment modules yet)
+  api/      NestJS API (auth, tenancy, customers, canonical payments)
   admin/    Next.js App Router admin console
   docs/     Next.js App Router developer documentation site
   worker/   Outbox worker (PostgreSQL poll, claim, dispatch)
@@ -72,6 +73,8 @@ implementation must follow them, not the other way around.
   tenant-scoped security audit and how it differs from the outbox.
 - [Customers](docs/architecture/customers.md) — canonical FUP customers
   and provider mappings.
+- [Payments persistence](docs/architecture/payments-persistence.md) —
+  persisted canonical payments, money storage, and internal lifecycle.
 - [Payment domain](docs/architecture/payment-domain.md) — provider-neutral
   money, payment aggregate, and refund invariants.
 - [Provider contracts](docs/architecture/provider-contracts.md) —

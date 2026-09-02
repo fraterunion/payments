@@ -11,6 +11,9 @@ export {
   InboxEventStatus,
   CustomerType,
   CustomerStatus,
+  PaymentStatus,
+  PaymentCaptureMethod,
+  PaymentFailureCategory,
 } from '../generated/client/index.js';
 
 export type {
@@ -25,6 +28,8 @@ export type {
   InboxEvent,
   Customer,
   CustomerProviderMapping,
+  Payment,
+  PaymentCreateIdempotencyKey,
 } from '../generated/client/index.js';
 
 export { createPrismaClient } from './client.js';

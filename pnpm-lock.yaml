@@ -267,6 +267,9 @@ importers:
       '@fraterunion-payments/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@fraterunion-payments/payment-core':
+        specifier: workspace:*
+        version: link:../../packages/payment-core
       '@fraterunion-payments/provider-contracts':
         specifier: workspace:*
         version: link:../../packages/provider-contracts

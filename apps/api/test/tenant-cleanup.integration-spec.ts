@@ -48,6 +48,15 @@ if (databaseUrl === undefined) {
     await db.customer.create({
       data: { organizationId: organization.id, name: 'Left behind' },
     });
+    await db.payment.create({
+      data: {
+        organizationId: organization.id,
+        status: 'CREATED',
+        captureMethod: 'MANUAL',
+        currency: 'USD',
+        requestedAmount: 1000n,
+      },
+    });
 
     await expect(db.organization.delete({ where: { id: organization.id } })).rejects.toThrow();
 
@@ -55,6 +64,7 @@ if (databaseUrl === undefined) {
 
     expect(await db.organization.findUnique({ where: { id: organization.id } })).toBeNull();
     expect(await db.customer.count({ where: { organizationId: organization.id } })).toBe(0);
+    expect(await db.payment.count({ where: { organizationId: organization.id } })).toBe(0);
     expect(
       await db.organization.findUnique({ where: { slug: SEED_ORGANIZATION_SLUG } }),
     ).not.toBeNull();

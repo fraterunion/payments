@@ -1,4 +1,4 @@
-// FraterUnion Payments — core tenancy and customer schema.
+// FraterUnion Payments — core tenancy, customer, and payment schema.
 // See packages/database/README.md for naming conventions, deletion policy,
 // indexing rationale, and the database-enforced vs. application-enforced
 // validation boundary. See docs/decisions/ADR-002 and ADR-003.
@@ -107,6 +107,45 @@ enum CustomerStatus {
   @@map("customer_status")
 }
 
+/// Canonical FraterUnion Payments states. Values match payment-core
+/// `PAYMENT_STATES` exactly. These are not provider statuses.
+enum PaymentStatus {
+  CREATED
+  REQUIRES_PAYMENT_METHOD
+  REQUIRES_ACTION
+  AUTHORIZING
+  AUTHORIZED
+  CAPTURING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  PARTIALLY_REFUNDED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
+/// Canonical capture method. Not a provider-specific capture flag.
+enum PaymentCaptureMethod {
+  AUTOMATIC
+  MANUAL
+
+  @@map("payment_capture_method")
+}
+
+/// Normalized failure categories from payment-core. Not raw provider codes.
+enum PaymentFailureCategory {
+  DECLINED
+  AUTHENTICATION
+  INSUFFICIENT_FUNDS
+  INVALID_PAYMENT_METHOD
+  PROCESSING
+  PROVIDER
+  UNKNOWN
+
+  @@map("payment_failure_category")
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -145,13 +184,15 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships              OrganizationMembership[]
-  apiKeys                  ApiKey[]
-  auditLogs                AuditLog[]
-  outboxEvents             OutboxEvent[]
-  inboxEvents              InboxEvent[]
-  customers                Customer[]
-  customerProviderMappings CustomerProviderMapping[]
+  memberships                  OrganizationMembership[]
+  apiKeys                      ApiKey[]
+  auditLogs                    AuditLog[]
+  outboxEvents                 OutboxEvent[]
+  inboxEvents                  InboxEvent[]
+  customers                    Customer[]
+  customerProviderMappings     CustomerProviderMapping[]
+  payments                     Payment[]
+  paymentCreateIdempotencyKeys PaymentCreateIdempotencyKey[]
 
   @@index([status])
   @@index([type])
@@ -553,6 +594,7 @@ model Customer {
 
   organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   providerMappings CustomerProviderMapping[]
+  payments         Payment[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, externalReference], map: "customers_org_external_ref_uidx")
@@ -597,4 +639,81 @@ model CustomerProviderMapping {
   @@index([organizationId, customerId])
   @@index([organizationId, provider, providerAccountScope])
   @@map("customer_provider_mappings")
+}
+
+/// Canonical FraterUnion Payments payment. This is not a Stripe PaymentIntent
+/// or any other provider object. Provider execution and provider payment IDs
+/// are intentionally absent — a later mapping/execution model will attach
+/// them without assuming one payment equals one provider object forever.
+///
+/// Monetary columns are PostgreSQL BIGINT (Prisma BigInt), never floats.
+/// CHECK constraints in `add_payments` enforce amount inequalities, currency
+/// shape, object metadata, failure-field consistency, and SUCCEEDED capture.
+///
+/// `customerId` is optional (guest/one-off checkout). When present, the
+/// composite FK `(customerId, organizationId) → customers(id, organizationId)`
+/// makes cross-tenant attach impossible. PostgreSQL MATCH SIMPLE skips the
+/// check when `customerId` is NULL.
+///
+/// Concurrency uses SELECT FOR UPDATE in the application transaction, not
+/// an optimistic `version` column — status-based domain transitions already
+/// make conflicting updates illegal after the row is locked.
+model Payment {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  customerId     String? @map("customer_id") @db.Uuid
+
+  status        PaymentStatus
+  captureMethod PaymentCaptureMethod @map("capture_method")
+
+  /// Uppercase ISO 4217. Application uses payment-core validation; DB CHECK
+  /// enforces the three-letter shape.
+  currency         String @db.VarChar(3)
+  requestedAmount  BigInt @map("requested_amount")
+  authorizedAmount BigInt @default(0) @map("authorized_amount")
+  capturedAmount   BigInt @default(0) @map("captured_amount")
+  refundedAmount   BigInt @default(0) @map("refunded_amount")
+
+  failureCategory  PaymentFailureCategory? @map("failure_category")
+  failureCode      String?                 @map("failure_code") @db.VarChar(64)
+  failureMessage   String?                 @map("failure_message") @db.VarChar(512)
+  failureRetryable Boolean?                @map("failure_retryable")
+
+  description String? @db.VarChar(500)
+  metadata    Json    @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customer             Customer?                    @relation(fields: [customerId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  createIdempotencyKey PaymentCreateIdempotencyKey?
+
+  @@unique([id, organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, customerId, createdAt])
+  @@index([organizationId, currency, createdAt])
+  @@map("payments")
+}
+
+/// Narrow durable idempotency record for `POST /payments` only.
+/// Generalized financial-operation idempotency is deferred (original
+/// roadmap Commit 14). Unique per `(organizationId, keyHash)` where
+/// `keyHash` is SHA-256 of the `Idempotency-Key` header. The raw key is
+/// not stored. Records currently remain indefinitely — no silent expiry.
+model PaymentCreateIdempotencyKey {
+  id                 String @id @default(uuid(7)) @db.Uuid
+  organizationId     String @map("organization_id") @db.Uuid
+  keyHash            String @map("key_hash") @db.Char(64)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  paymentId          String @unique @map("payment_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment      Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, keyHash], map: "payment_create_idempotency_org_key_uidx")
+  @@map("payment_create_idempotency_keys")
 }
