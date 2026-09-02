@@ -17,6 +17,7 @@ export {
   RefundStatus,
   RefundReason,
   IdempotencyRecordStatus,
+  ProviderAccountConnectionStatus,
 } from '../generated/client/index.js';
 
 export type {
@@ -34,6 +35,7 @@ export type {
   Payment,
   Refund,
   IdempotencyRecord,
+  ProviderAccountConnection,
 } from '../generated/client/index.js';
 
 export { createPrismaClient } from './client.js';

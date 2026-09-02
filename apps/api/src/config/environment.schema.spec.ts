@@ -54,6 +54,7 @@ describe('loadEnvironment', () => {
       authCookieEnabled: false,
       authCookieSecure: false,
       authCookieSameSite: 'lax',
+      stripeEnabled: false,
     });
   });
 
@@ -82,6 +83,7 @@ describe('loadEnvironment', () => {
     expect(environment.authCookieEnabled).toBe(false);
     expect(environment.authCookieSecure).toBe(false);
     expect(environment.authCookieSameSite).toBe('lax');
+    expect(environment.stripeEnabled).toBe(false);
   });
 
   it('throws EnvironmentValidationError when JWT_ACCESS_SECRET is missing', () => {
@@ -248,5 +250,47 @@ describe('loadEnvironment', () => {
   it('normalizes a prefix with leading and trailing slashes', () => {
     const environment = loadEnvironment({ ...VALID_ENV, API_PREFIX: '/api/' });
     expect(environment.apiPrefix).toBe('api');
+  });
+
+  it('does not require Stripe configuration when STRIPE_ENABLED is omitted', () => {
+    const environment = loadEnvironment(VALID_ENV);
+    expect(environment.stripeEnabled).toBe(false);
+    expect(environment.stripeSecretKey).toBeUndefined();
+  });
+
+  it('requires Stripe secret and Connect URLs when Stripe is enabled', () => {
+    expect(() => loadEnvironment({ ...VALID_ENV, STRIPE_ENABLED: 'true' })).toThrow(
+      EnvironmentValidationError,
+    );
+  });
+
+  it('rejects live Stripe credentials outside production without echoing the secret', () => {
+    try {
+      loadEnvironment({
+        ...VALID_ENV,
+        STRIPE_ENABLED: 'true',
+        STRIPE_SECRET_KEY: 'sk_live_should_never_appear_in_errors',
+        STRIPE_CONNECT_RETURN_URL: 'https://admin.example.com/return',
+        STRIPE_CONNECT_REFRESH_URL: 'https://admin.example.com/refresh',
+      });
+      throw new Error('expected loadEnvironment to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(EnvironmentValidationError);
+      expect((error as EnvironmentValidationError).message).not.toContain(
+        'sk_live_should_never_appear_in_errors',
+      );
+    }
+  });
+
+  it('accepts test Stripe credentials with localhost Connect URLs outside production', () => {
+    const environment = loadEnvironment({
+      ...VALID_ENV,
+      STRIPE_ENABLED: 'true',
+      STRIPE_SECRET_KEY: 'sk_test_not_a_real_key',
+      STRIPE_CONNECT_RETURN_URL: 'http://localhost:3000/connect/return',
+      STRIPE_CONNECT_REFRESH_URL: 'http://localhost:3000/connect/refresh',
+    });
+    expect(environment.stripeEnabled).toBe(true);
+    expect(environment.stripeSecretKey).toBe('sk_test_not_a_real_key');
   });
 });

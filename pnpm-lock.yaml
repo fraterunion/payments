@@ -276,6 +276,9 @@ importers:
       '@fraterunion-payments/provider-contracts':
         specifier: workspace:*
         version: link:../../packages/provider-contracts
+      '@fraterunion-payments/provider-stripe':
+        specifier: workspace:*
+        version: link:../../packages/provider-stripe
       '@nestjs/common':
         specifier: 'catalog:'
         version: 11.1.28(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)

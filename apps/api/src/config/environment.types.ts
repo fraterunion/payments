@@ -29,4 +29,8 @@ export interface Environment {
   readonly authCookieEnabled: boolean;
   readonly authCookieSecure: boolean;
   readonly authCookieSameSite: AuthCookieSameSite;
+  readonly stripeEnabled: boolean;
+  readonly stripeSecretKey?: string;
+  readonly stripeConnectReturnUrl?: string;
+  readonly stripeConnectRefreshUrl?: string;
 }

@@ -4,6 +4,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ProviderConnectionsModule } from './provider-connections/provider-connections.module';
 import { RefundsModule } from './refunds/refunds.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { AppConfigModule } from './config/app-config.module';
@@ -36,6 +37,7 @@ export class AppModule {
         CustomersModule,
         PaymentsModule,
         RefundsModule,
+        ProviderConnectionsModule,
       ],
       providers: [{ provide: APP_FILTER, useClass: GlobalExceptionFilter }],
     };

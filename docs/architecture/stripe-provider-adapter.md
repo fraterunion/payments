@@ -29,13 +29,13 @@ This package does **not**:
 - persist Payments, Refunds, or provider IDs
 - expose HTTP routes (`/stripe/*` or otherwise)
 - orchestrate public Payment/Refund APIs
-- onboard Stripe Connect accounts
 - ingest or verify webhooks
 - collect raw cards or PaymentMethods
 - invent idempotency keys
 
-Public APIs continue to behave as before. Application wiring is a later
-commit.
+Connect onboarding lives in `StripeConnectProvider` (Accounts v2 + hosted
+Account Links). Public Payment/Refund APIs are still not wired to Stripe.
+See [`stripe-connect.md`](./stripe-connect.md).
 
 ## Dependency direction
 

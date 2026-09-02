@@ -109,4 +109,21 @@ export class AppConfigService {
   get authCookieSameSite(): Environment['authCookieSameSite'] {
     return this.environment.authCookieSameSite;
   }
+
+  get stripeEnabled(): boolean {
+    return this.environment.stripeEnabled;
+  }
+
+  /** Intentionally has no equivalent HTTP-exposed getter/response field. */
+  get stripeSecretKey(): string | undefined {
+    return this.environment.stripeSecretKey;
+  }
+
+  get stripeConnectReturnUrl(): string | undefined {
+    return this.environment.stripeConnectReturnUrl;
+  }
+
+  get stripeConnectRefreshUrl(): string | undefined {
+    return this.environment.stripeConnectRefreshUrl;
+  }
 }

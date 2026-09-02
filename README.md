@@ -20,17 +20,17 @@ transactional outbox / durable inbox substrate, the provider-neutral
 payment domain, provider contracts/registry, canonical customers with
 provider mappings, persisted canonical payments, persisted canonical
 refunds (create/get/list plus internal lifecycle, without provider
-execution), durable financial-command idempotency, and an isolated
-Stripe provider adapter are in place. Public Payment/Refund APIs are
-not wired to Stripe yet. Connect onboarding, ledger posting,
-reconciliation, billing, and outbound organization webhooks are not
-implemented yet.
+execution), durable financial-command idempotency, an isolated Stripe provider adapter,
+and organization-owned Stripe connected-account onboarding
+(`ProviderAccountConnection`). Public Payment/Refund APIs are not wired
+to Stripe yet. Ledger posting, reconciliation, billing, and outbound
+organization webhooks are not implemented yet.
 
 ## Monorepo structure
 
 ```text
 apps/
-  api/      NestJS API (auth, tenancy, customers, payments, refunds)
+  api/      NestJS API (auth, tenancy, customers, payments, refunds, provider connections)
   admin/    Next.js App Router admin console
   docs/     Next.js App Router developer documentation site
   worker/   Outbox worker (PostgreSQL poll, claim, dispatch)

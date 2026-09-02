@@ -22,6 +22,51 @@ const MIN_ARGON2_MEMORY_KIB = 8192;
 const MAX_ARGON2_MEMORY_KIB = 1_048_576;
 const MAX_ARGON2_TIME_COST = 10;
 const MAX_ARGON2_PARALLELISM = 16;
+const STRIPE_CONNECT_URL_MAX_LENGTH = 2048;
+
+function optionalNonEmptyString(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function assertConnectRedirectUrl(
+  value: string,
+  field: string,
+  nodeEnv: Environment['nodeEnv'],
+): string | undefined {
+  if (value.length > STRIPE_CONNECT_URL_MAX_LENGTH) {
+    return `${field} exceeds the maximum length.`;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return `${field} must be an absolute URL.`;
+  }
+  if (parsed.username !== '' || parsed.password !== '') {
+    return `${field} must not include credentials.`;
+  }
+  if (nodeEnv === 'production') {
+    if (parsed.protocol !== 'https:') {
+      return `${field} must use HTTPS in production.`;
+    }
+    return undefined;
+  }
+  const localhost =
+    parsed.hostname === 'localhost' ||
+    parsed.hostname === '127.0.0.1' ||
+    parsed.hostname === '[::1]';
+  if (parsed.protocol === 'https:') {
+    return undefined;
+  }
+  if (parsed.protocol === 'http:' && localhost) {
+    return undefined;
+  }
+  return `${field} must use HTTPS, or HTTP on localhost outside production.`;
+}
 
 function booleanFlagSchema(defaultValue: 'true' | 'false') {
   return z
@@ -102,34 +147,47 @@ const rawEnvironmentSchema = z.object({
   AUTH_COOKIE_ENABLED: booleanFlagSchema('false'),
   AUTH_COOKIE_SECURE: booleanFlagSchema('false'),
   AUTH_COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
+  STRIPE_ENABLED: booleanFlagSchema('false'),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_CONNECT_RETURN_URL: z.string().optional(),
+  STRIPE_CONNECT_REFRESH_URL: z.string().optional(),
 });
 
 export const environmentSchema = rawEnvironmentSchema
-  .transform((raw): Environment => ({
-    nodeEnv: raw.NODE_ENV,
-    apiPort: raw.API_PORT,
-    apiHost: raw.API_HOST,
-    apiPrefix: raw.API_PREFIX,
-    apiVersion: raw.API_VERSION,
-    databaseUrl: raw.DATABASE_URL,
-    logLevel: raw.LOG_LEVEL,
-    corsOrigins: raw.CORS_ORIGINS,
-    swaggerEnabled: raw.SWAGGER_ENABLED,
-    trustProxy: raw.TRUST_PROXY,
-    shutdownTimeoutMs: raw.SHUTDOWN_TIMEOUT_MS,
-    jwtAccessSecret: raw.JWT_ACCESS_SECRET,
-    jwtAccessIssuer: raw.JWT_ACCESS_ISSUER,
-    jwtAccessAudience: raw.JWT_ACCESS_AUDIENCE,
-    jwtAccessTtlSeconds: raw.JWT_ACCESS_TTL_SECONDS,
-    sessionTtlSeconds: raw.SESSION_TTL_SECONDS,
-    passwordArgon2MemoryKib: raw.PASSWORD_ARGON2_MEMORY_KIB,
-    passwordArgon2TimeCost: raw.PASSWORD_ARGON2_TIME_COST,
-    passwordArgon2Parallelism: raw.PASSWORD_ARGON2_PARALLELISM,
-    apiKeyHashSecret: raw.API_KEY_HASH_SECRET,
-    authCookieEnabled: raw.AUTH_COOKIE_ENABLED,
-    authCookieSecure: raw.AUTH_COOKIE_SECURE,
-    authCookieSameSite: raw.AUTH_COOKIE_SAME_SITE,
-  }))
+  .transform((raw): Environment => {
+    const stripeSecretKey = optionalNonEmptyString(raw.STRIPE_SECRET_KEY);
+    const stripeConnectReturnUrl = optionalNonEmptyString(raw.STRIPE_CONNECT_RETURN_URL);
+    const stripeConnectRefreshUrl = optionalNonEmptyString(raw.STRIPE_CONNECT_REFRESH_URL);
+    return {
+      nodeEnv: raw.NODE_ENV,
+      apiPort: raw.API_PORT,
+      apiHost: raw.API_HOST,
+      apiPrefix: raw.API_PREFIX,
+      apiVersion: raw.API_VERSION,
+      databaseUrl: raw.DATABASE_URL,
+      logLevel: raw.LOG_LEVEL,
+      corsOrigins: raw.CORS_ORIGINS,
+      swaggerEnabled: raw.SWAGGER_ENABLED,
+      trustProxy: raw.TRUST_PROXY,
+      shutdownTimeoutMs: raw.SHUTDOWN_TIMEOUT_MS,
+      jwtAccessSecret: raw.JWT_ACCESS_SECRET,
+      jwtAccessIssuer: raw.JWT_ACCESS_ISSUER,
+      jwtAccessAudience: raw.JWT_ACCESS_AUDIENCE,
+      jwtAccessTtlSeconds: raw.JWT_ACCESS_TTL_SECONDS,
+      sessionTtlSeconds: raw.SESSION_TTL_SECONDS,
+      passwordArgon2MemoryKib: raw.PASSWORD_ARGON2_MEMORY_KIB,
+      passwordArgon2TimeCost: raw.PASSWORD_ARGON2_TIME_COST,
+      passwordArgon2Parallelism: raw.PASSWORD_ARGON2_PARALLELISM,
+      apiKeyHashSecret: raw.API_KEY_HASH_SECRET,
+      authCookieEnabled: raw.AUTH_COOKIE_ENABLED,
+      authCookieSecure: raw.AUTH_COOKIE_SECURE,
+      authCookieSameSite: raw.AUTH_COOKIE_SAME_SITE,
+      stripeEnabled: raw.STRIPE_ENABLED,
+      ...(stripeSecretKey !== undefined ? { stripeSecretKey } : {}),
+      ...(stripeConnectReturnUrl !== undefined ? { stripeConnectReturnUrl } : {}),
+      ...(stripeConnectRefreshUrl !== undefined ? { stripeConnectRefreshUrl } : {}),
+    };
+  })
   .superRefine((environment, ctx) => {
     if (environment.nodeEnv === 'production' && environment.corsOrigins.includes('*')) {
       ctx.addIssue({
@@ -196,6 +254,67 @@ export const environmentSchema = rawEnvironmentSchema
         path: ['AUTH_COOKIE_SAME_SITE'],
         message: 'AUTH_COOKIE_SAME_SITE=none requires AUTH_COOKIE_SECURE=true.',
       });
+    }
+
+    if (environment.stripeEnabled) {
+      if (environment.stripeSecretKey === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STRIPE_SECRET_KEY'],
+          message: 'STRIPE_SECRET_KEY is required when STRIPE_ENABLED is true.',
+        });
+      } else if (
+        environment.nodeEnv !== 'production' &&
+        environment.stripeSecretKey.startsWith('sk_live_')
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STRIPE_SECRET_KEY'],
+          message: 'Live Stripe credentials are not permitted outside production.',
+        });
+      }
+
+      if (environment.stripeConnectReturnUrl === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STRIPE_CONNECT_RETURN_URL'],
+          message: 'STRIPE_CONNECT_RETURN_URL is required when STRIPE_ENABLED is true.',
+        });
+      } else {
+        const issue = assertConnectRedirectUrl(
+          environment.stripeConnectReturnUrl,
+          'STRIPE_CONNECT_RETURN_URL',
+          environment.nodeEnv,
+        );
+        if (issue !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['STRIPE_CONNECT_RETURN_URL'],
+            message: issue,
+          });
+        }
+      }
+
+      if (environment.stripeConnectRefreshUrl === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STRIPE_CONNECT_REFRESH_URL'],
+          message: 'STRIPE_CONNECT_REFRESH_URL is required when STRIPE_ENABLED is true.',
+        });
+      } else {
+        const issue = assertConnectRedirectUrl(
+          environment.stripeConnectRefreshUrl,
+          'STRIPE_CONNECT_REFRESH_URL',
+          environment.nodeEnv,
+        );
+        if (issue !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['STRIPE_CONNECT_REFRESH_URL'],
+            message: issue,
+          });
+        }
+      }
     }
   });
 

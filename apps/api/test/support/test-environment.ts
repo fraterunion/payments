@@ -30,6 +30,7 @@ export function createTestEnvironment(overrides: Partial<Environment> = {}): Env
     authCookieEnabled: false,
     authCookieSecure: false,
     authCookieSameSite: 'lax',
+    stripeEnabled: false,
     ...overrides,
   });
 }

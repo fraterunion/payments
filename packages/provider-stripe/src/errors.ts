@@ -80,6 +80,28 @@ export function stripeErrorPaymentIntent(error: unknown): StripePaymentIntentSna
   };
 }
 
+const CONNECT_PLATFORM_BLOCKED_CODES = new Set([
+  'accounts_v2_access_blocked',
+  'platform_registration_required',
+  'account_create_activation_required',
+]);
+
+export function isStripeConnectPlatformBlocked(error: unknown): boolean {
+  if (!(error instanceof Stripe.errors.StripeError)) {
+    return false;
+  }
+  const code = error.code ?? '';
+  if (CONNECT_PLATFORM_BLOCKED_CODES.has(code)) {
+    return true;
+  }
+  const message = (error.message ?? '').toLowerCase();
+  return (
+    message.includes('accounts_v2_access_blocked') ||
+    message.includes('platform_registration_required') ||
+    message.includes('account_create_activation_required')
+  );
+}
+
 export function normalizeStripeError(error: unknown): never {
   if (isProviderContractError(error)) {
     throw error;

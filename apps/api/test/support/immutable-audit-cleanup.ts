@@ -45,6 +45,7 @@ export async function deleteTenantsForTests(
   if (targets.organizationIds.length > 0) {
     const orgFilter = { organizationId: { in: [...targets.organizationIds] } };
     await db.customerProviderMapping.deleteMany({ where: orgFilter });
+    await db.providerAccountConnection.deleteMany({ where: orgFilter });
     await db.refund.deleteMany({ where: orgFilter });
     await db.payment.deleteMany({ where: orgFilter });
     await db.idempotencyRecord.deleteMany({ where: orgFilter });

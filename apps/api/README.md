@@ -6,11 +6,12 @@ The NestJS API is the FraterUnion Payments HTTP surface. It provides
 production-ready API infrastructure (typed configuration, health checks,
 database lifecycle, structured logging, request correlation, global
 validation and error handling, versioning, Swagger) and, as of the `auth`,
-`customers`, and `payments` modules, human authentication, organization-scoped
-API keys, role/scope-based access control, tenant-safe customers, and
-canonical payment create/get/list (internal lifecycle only; no provider
-execution). The Stripe adapter package exists but is not imported or
-wired here. Billing remains out of scope. See
+`customers`, `payments`, `refunds`, and `provider-connections` modules,
+human authentication, organization-scoped API keys, role/scope-based access
+control, tenant-safe customers, canonical payment/refund create/get/list
+(internal lifecycle only; public APIs still do not execute on Stripe), and
+Stripe connected-account onboarding behind canonical provider-connection
+resources. Billing remains out of scope. See
 [ADR-001](../../docs/decisions/ADR-001-nestjs-nextjs-and-typescript.md) for
 why NestJS was chosen,
 [`../../docs/architecture/security-boundaries.md`](../../docs/architecture/security-boundaries.md)
@@ -47,6 +48,7 @@ src/
 ├── idempotency/                  Financial-command idempotency (no public HTTP)
 ├── customers/                    Customer CRUD/archive, provider-mapping service (create is service-only)
 ├── payments/                     Canonical payment create/get/list; internal lifecycle; create idempotency
+├── provider-connections/         Canonical Stripe Connect onboarding; human OWNER/ADMIN create
 ├── auth/                         see below and
 │   │                             ../../docs/architecture/authentication-and-access-control.md
 │   ├── auth.module.ts
@@ -95,6 +97,11 @@ in full — including their production-only constraints and cross-field
 rules — in
 [`../../docs/architecture/authentication-and-access-control.md#environment-variables`](../../docs/architecture/authentication-and-access-control.md#environment-variables)
 rather than duplicated here.
+
+When `STRIPE_ENABLED=true`, the API also requires `STRIPE_SECRET_KEY`,
+`STRIPE_CONNECT_RETURN_URL`, and `STRIPE_CONNECT_REFRESH_URL`. Those
+values are never logged or returned. See
+[`../../docs/architecture/stripe-connect.md`](../../docs/architecture/stripe-connect.md).
 
 Configuration is exposed only through `AppConfigService`'s typed getters —
 nothing reads `process.env` outside `main.ts`'s single `loadEnvironment()`

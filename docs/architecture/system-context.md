@@ -11,9 +11,12 @@ substrate, the provider-neutral payment domain
 with provider mappings, persisted canonical payments, persisted
 canonical refunds without provider execution, durable
 financial-command idempotency (`idempotency_records`; see
-[`idempotency.md`](./idempotency.md)), and an isolated Stripe adapter
-(`@fraterunion-payments/provider-stripe`) that is not yet wired to
-public Payment/Refund APIs. See the root
+[`idempotency.md`](./idempotency.md)), an isolated Stripe adapter
+(`@fraterunion-payments/provider-stripe`), and canonical Stripe
+connected-account onboarding (`ProviderAccountConnection`; see
+[`provider-account-connections.md`](./provider-account-connections.md)
+and [`stripe-connect.md`](./stripe-connect.md)). Public Payment/Refund
+APIs are not yet wired to Stripe. See the root
 [`README.md`](../../README.md). This document still defines the broader
 target shape later commits build toward.
 

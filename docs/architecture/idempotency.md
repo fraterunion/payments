@@ -21,17 +21,18 @@ FUP command identity
   v
 Canonical financial operation
   |
-  | deterministic ProviderIdempotencyKey   ← future
+  | deterministic ProviderIdempotencyKey
   v
-Provider adapter                           ← future
+Provider adapter
 ```
 
 The client header identifies a **logical FUP command**. It is hashed, never
 stored, never logged, never audited, and never forwarded to a provider.
 
-A future adapter derives `ProviderIdempotencyKey` from the durable FUP
-`operationId` (`idempotency_records.id`). Same FUP operation → same provider
-key. Different provider or operation → different key.
+The Stripe Connect create path derives `ProviderIdempotencyKey` from the
+durable FUP `operationId` (`idempotency_records.id`). Same FUP operation →
+same provider key. Different provider or operation → different key. Payment
+and refund provider execution still does not call Stripe.
 
 Do not conflate:
 
@@ -51,6 +52,7 @@ Callable today:
 ```text
 payment.create
 refund.create
+provider.account.create
 ```
 
 Reserved for future provider orchestration (not publicly callable):
@@ -62,9 +64,10 @@ payment.cancel
 refund.execute
 ```
 
-There are no Stripe-specific scopes and no `GET`/`POST /idempotency`
-endpoints. There are no public authorize, capture, cancel, or refund-execute
-HTTP routes in this commit.
+There are no Stripe-specific scopes (`stripe.account.create` is not
+registered) and no `GET`/`POST /idempotency` endpoints. There are no
+public authorize, capture, cancel, or refund-execute HTTP routes in this
+commit.
 
 ## Durable model
 
@@ -75,7 +78,7 @@ idempotency_records
   scope
   keyHash             SHA-256 of the trimmed Idempotency-Key
   requestFingerprint  SHA-256 of canonical command JSON
-  resourceType        payment | refund
+  resourceType        payment | refund | connection
   resourceId          durable subject/result UUID
   status              IN_PROGRESS | COMPLETED
   createdAt
@@ -214,11 +217,14 @@ That can double-charge or double-refund. The durable FUP operation must
 survive ambiguity; later retrieve/reconcile may complete it.
 
 Atomic create paths insert `COMPLETED` directly because mutation and
-binding finish in one PostgreSQL transaction. Future provider commands
-may `reserveInProgress` first, call the provider **outside** that
-transaction, then `complete`. Same key + same fingerprint while
-`IN_PROGRESS` returns `409 IDEMPOTENCY_OPERATION_IN_PROGRESS`. Clients may
-retry the same key; they must not assume a completed result exists.
+binding finish in one PostgreSQL transaction. Provider-account create
+`reserveInProgress` first, calls Stripe **outside** that transaction, then
+`complete`. Generic `resolveReplay` still returns
+`409 IDEMPOTENCY_OPERATION_IN_PROGRESS` for ordinary consumers. Connect
+provisioning uses an orchestration-level resume of the same operation
+instead of that 409, so a lost Stripe response can be recovered with the
+same provider idempotency key. See
+[`provider-account-connections.md`](./provider-account-connections.md).
 
 This table has **no worker lease**. Outbox leases remain a separate
 concern. No financial outbox events were added in this commit.
@@ -232,7 +238,8 @@ resource lifetime, and storage growth.
 
 ## Current create behavior
 
-`POST /payments` and `POST /payments/:paymentId/refunds` still:
+`POST /payments`, `POST /payments/:paymentId/refunds`, and
+`POST /provider-connections/stripe` still:
 
 - require `Idempotency-Key`
 - replay exact requests

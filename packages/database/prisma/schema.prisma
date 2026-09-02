@@ -180,6 +180,29 @@ enum IdempotencyRecordStatus {
   @@map("idempotency_record_status")
 }
 
+/// Canonical merchant-processor connection readiness. These are not Stripe
+/// account status strings. Semantics:
+/// - PENDING: provider account exists; required capabilities are not yet
+///   conclusively available and no currently-due/past-due requirements
+///   have been observed.
+/// - REQUIRES_ACTION: the merchant must complete provider requirements
+///   (typically via Stripe-hosted onboarding).
+/// - ACTIVE: the capabilities FUP requires for payment operation are
+///   currently available (card payments and payouts).
+/// - RESTRICTED: previously requested capabilities are blocked without a
+///   currently-due onboarding path, or the account cannot operate.
+/// - DISCONNECTED: the provider account is closed or otherwise unusable.
+///   Application APIs do not set this in the onboarding commit.
+enum ProviderAccountConnectionStatus {
+  PENDING
+  REQUIRES_ACTION
+  ACTIVE
+  RESTRICTED
+  DISCONNECTED
+
+  @@map("provider_account_connection_status")
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -218,16 +241,17 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships              OrganizationMembership[]
-  apiKeys                  ApiKey[]
-  auditLogs                AuditLog[]
-  outboxEvents             OutboxEvent[]
-  inboxEvents              InboxEvent[]
-  customers                Customer[]
-  customerProviderMappings CustomerProviderMapping[]
-  payments                 Payment[]
-  refunds                  Refund[]
-  idempotencyRecords       IdempotencyRecord[]
+  memberships                OrganizationMembership[]
+  apiKeys                    ApiKey[]
+  auditLogs                  AuditLog[]
+  outboxEvents               OutboxEvent[]
+  inboxEvents                InboxEvent[]
+  customers                  Customer[]
+  customerProviderMappings   CustomerProviderMapping[]
+  payments                   Payment[]
+  refunds                    Refund[]
+  idempotencyRecords         IdempotencyRecord[]
+  providerAccountConnections ProviderAccountConnection[]
 
   @@index([status])
   @@index([type])
@@ -655,8 +679,10 @@ model CustomerProviderMapping {
 
   /// Validated `PaymentProviderCode` (not a closed enum).
   provider                 String  @db.VarChar(32)
-  /// Optional opaque merchant/account identity. Not a FK — ProviderAccount
-  /// persistence is not implemented yet.
+  /// Optional opaque merchant/account identity. Not a FK to
+  /// ProviderAccountConnection — historical mappings predate connections,
+  /// and future mappings will copy the connection's providerAccountId as
+  /// this opaque string without introducing a provider-specific join.
   providerAccountReference String? @map("provider_account_reference") @db.VarChar(255)
   /// Always non-null uniqueness scope. See model comment.
   providerAccountScope     String  @map("provider_account_scope") @db.VarChar(261)
@@ -674,6 +700,41 @@ model CustomerProviderMapping {
   @@index([organizationId, customerId])
   @@index([organizationId, provider, providerAccountScope])
   @@map("customer_provider_mappings")
+}
+
+/// Canonical organization-owned merchant processor connection. This is not a
+/// Stripe Account row and does not live on `organizations`. Provider is an
+/// extensible VARCHAR (`PaymentProviderCode` shape), not a closed Prisma enum.
+/// `providerAccountId` is an opaque external identity — never a UUID and never
+/// a Stripe-named column. One active connection per `(organizationId, provider)`
+/// in V1; the same external account cannot bind two organizations.
+///
+/// No onboarding URL, KYC, bank, tax, or person columns. Status is FUP
+/// canonical readiness, not a copy of provider status strings. Physical
+/// delete is not an application API; Organization FK is RESTRICT.
+model ProviderAccountConnection {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  /// Validated `PaymentProviderCode` (not a closed enum).
+  provider          String @db.VarChar(32)
+  providerAccountId String @map("provider_account_id") @db.VarChar(255)
+
+  status          ProviderAccountConnectionStatus
+  paymentsEnabled Boolean                         @map("payments_enabled")
+  payoutsEnabled  Boolean                         @map("payouts_enabled")
+  requirementsDue Boolean                         @map("requirements_due")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, provider])
+  @@unique([provider, providerAccountId])
+  @@index([organizationId, status])
+  @@map("provider_account_connections")
 }
 
 /// Canonical FraterUnion Payments payment. This is not a Stripe PaymentIntent

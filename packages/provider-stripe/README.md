@@ -27,13 +27,20 @@ Authoritative notes:
 ```ts
 import {
   StripePaymentProvider,
+  StripeConnectProvider,
   type StripePaymentProviderConfig,
+  type StripeConnectProviderConfig,
   STRIPE_API_VERSION,
   STRIPE_PROVIDER_CODE,
 } from '@fraterunion-payments/provider-stripe';
 
-const provider = new StripePaymentProvider({
+const payments = new StripePaymentProvider({
   secretKey: suppliedByTheApplication,
+});
+const connect = new StripeConnectProvider({
+  secretKey: suppliedByTheApplication,
+  allowLive: false,
+  urlEnvironment: 'test',
 });
 ```
 
@@ -44,9 +51,11 @@ Pinned versions: Stripe Node SDK **22.6.1**, API **2026-08-26.dahlia**.
 
 ## What this package is not
 
-It does not write to the database, expose HTTP routes, onboard Connect
-accounts, verify webhooks, handle raw cards, or wire public Payment /
-Refund APIs.
+It does not write to the database, expose HTTP routes, verify webhooks,
+handle raw cards, or wire public Payment / Refund APIs. Connect onboarding
+is implemented here as `StripeConnectProvider` (Accounts v2 + hosted
+Account Links). See
+[`docs/architecture/stripe-connect.md`](../../docs/architecture/stripe-connect.md).
 
 ## Tests
 

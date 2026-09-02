@@ -48,7 +48,7 @@ describe.skipIf(!shouldRun)('Stripe test-mode integration', () => {
         }
       }),
     );
-  });
+  }, 30_000);
 
   it('creates a customer, automatic payment, manual capture, refund, and retrieve', async () => {
     const customer = await provider.createCustomer({
@@ -142,5 +142,35 @@ describe.skipIf(!shouldRun)('Stripe test-mode integration', () => {
     });
     expect(retrieved.providerPaymentReference.id).toBe(automatic.providerPaymentReference.id);
     expect(retrieved.requestedAmount?.amount).toBe(1500n);
-  });
+
+    const idempotentKey = asProviderIdempotencyKey(`it-idempotent-${Date.now()}`);
+    const firstIdempotent = await provider.createPayment({
+      organizationId: ORG,
+      paymentId: PAYMENT,
+      amount: createMoney(1100n, 'USD'),
+      captureMethod: CAPTURE_METHODS.MANUAL,
+      idempotencyKey: idempotentKey,
+      paymentMethod: createProviderPaymentMethodReference({
+        provider: 'stripe',
+        id: 'pm_card_visa',
+        type: PAYMENT_METHOD_TYPES.CARD,
+      }),
+    });
+    createdPaymentIntentIds.push(firstIdempotent.providerPaymentReference.id);
+    const secondIdempotent = await provider.createPayment({
+      organizationId: ORG,
+      paymentId: PAYMENT,
+      amount: createMoney(1100n, 'USD'),
+      captureMethod: CAPTURE_METHODS.MANUAL,
+      idempotencyKey: idempotentKey,
+      paymentMethod: createProviderPaymentMethodReference({
+        provider: 'stripe',
+        id: 'pm_card_visa',
+        type: PAYMENT_METHOD_TYPES.CARD,
+      }),
+    });
+    expect(secondIdempotent.providerPaymentReference.id).toBe(
+      firstIdempotent.providerPaymentReference.id,
+    );
+  }, 60_000);
 });

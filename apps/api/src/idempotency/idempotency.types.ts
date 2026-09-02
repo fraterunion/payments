@@ -14,6 +14,7 @@ export const IDEMPOTENCY_SCOPES = {
   PAYMENT_CANCEL: 'payment.cancel',
   REFUND_CREATE: 'refund.create',
   REFUND_EXECUTE: 'refund.execute',
+  PROVIDER_ACCOUNT_CREATE: 'provider.account.create',
 } as const;
 
 export type IdempotencyScope = (typeof IDEMPOTENCY_SCOPES)[keyof typeof IDEMPOTENCY_SCOPES];
@@ -29,6 +30,7 @@ export type IdempotencyRecordStatusName =
 export const IDEMPOTENCY_RESOURCE_TYPES = {
   PAYMENT: 'payment',
   REFUND: 'refund',
+  CONNECTION: 'connection',
 } as const;
 
 export type IdempotencyResourceType =
