@@ -1,4 +1,5 @@
 import { RefundStatus } from '@fraterunion-payments/database';
+import { IdempotencyService } from '../idempotency/idempotency.service';
 import { InvalidPaymentAmountException } from '../payments/payment.exceptions';
 import { RefundNotFoundException } from './refund.exceptions';
 import { RefundsService } from './refunds.service';
@@ -29,7 +30,12 @@ function createService(client: Record<string, unknown>) {
   };
   const auditService = { write: jest.fn().mockResolvedValue({}) };
   const logger = { setContext: jest.fn(), info: jest.fn() };
-  return new RefundsService(databaseService as never, auditService as never, logger as never);
+  return new RefundsService(
+    databaseService as never,
+    auditService as never,
+    logger as never,
+    new IdempotencyService(),
+  );
 }
 
 describe('RefundsService', () => {

@@ -103,9 +103,12 @@ stateDiagram-v2
    API key.
 2. **Tenant resolution.** The organization is resolved from the
    authenticated API key — never from a request body field.
-3. **Idempotency validation.** The request's idempotency key is checked
-   against previously seen keys for that organization; a repeated key
-   returns the original result instead of creating a new payment.
+3. **Idempotency validation.** The request's `Idempotency-Key` is bound
+   as a durable FUP financial command (`payment.create`). Exact retries
+   replay the original Payment. See
+   [`idempotency.md`](./idempotency.md). A later provider adapter must
+   use a derived `ProviderIdempotencyKey` from the FUP operation id —
+   never the raw client header.
 4. **Request validation.** Amount, currency, customer reference, and
    payment-method reference are validated.
 5. **Internal payment creation.** A payment record is created in state

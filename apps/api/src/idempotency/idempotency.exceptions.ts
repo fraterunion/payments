@@ -29,6 +29,16 @@ export class IdempotencyKeyConflictException extends AppException {
   }
 }
 
+export class IdempotencyOperationInProgressException extends AppException {
+  constructor() {
+    super(
+      ERROR_CODES.IDEMPOTENCY_OPERATION_IN_PROGRESS,
+      'This operation is already in progress. Retry the same Idempotency-Key.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}
+
 export function isIdempotencyUnique(error: unknown): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
     return false;
@@ -37,6 +47,7 @@ export function isIdempotencyUnique(error: unknown): boolean {
   return (
     target.includes('idempotency_records') ||
     target.includes('org_scope_key') ||
+    target.includes('scope_resource') ||
     target.includes('key_hash') ||
     target.includes('keyhash')
   );

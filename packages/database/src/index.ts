@@ -16,6 +16,7 @@ export {
   PaymentFailureCategory,
   RefundStatus,
   RefundReason,
+  IdempotencyRecordStatus,
 } from '../generated/client/index.js';
 
 export type {

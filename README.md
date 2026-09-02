@@ -18,9 +18,10 @@ The monorepo foundation, core tenancy schema, authentication and
 organization access control, immutable tenant audit logging, the
 transactional outbox / durable inbox substrate, the provider-neutral
 payment domain, provider contracts/registry, canonical customers with
-provider mappings, persisted canonical payments, and persisted canonical
+provider mappings, persisted canonical payments, persisted canonical
 refunds (create/get/list plus internal lifecycle, without provider
-execution) are in place. Provider adapters, ledger posting,
+execution), and durable financial-command idempotency are in place.
+Provider adapters, ledger posting,
 reconciliation, billing, and outbound organization webhooks are not
 implemented yet.
 

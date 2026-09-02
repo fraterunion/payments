@@ -25,17 +25,15 @@ import { AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES, type AuditActor } from '../audit/a
 import type { RequestContext } from '../auth/types/request-context.type';
 import { DatabaseService } from '../database/database.service';
 import type { DatabaseClient } from '../database/database.types';
+import { parseApiIdempotencyKey } from '../idempotency/idempotency';
+import { IdempotencyService } from '../idempotency/idempotency.service';
+import { IDEMPOTENCY_RESOURCE_TYPES, IDEMPOTENCY_SCOPES } from '../idempotency/idempotency.types';
 import { parsePositiveMinorUnitAmount } from './payment-amount';
-import {
-  canonicalizeIdempotencyKey,
-  hashIdempotencyKey,
-  paymentCreateFingerprint,
-} from './payment-idempotency';
+import { paymentCreateFingerprint } from './payment-idempotency';
 import { toDomainPayment, toPaymentPersistenceUpdate } from './payment-mapper';
 import { assertSafePaymentMetadata } from './payment-metadata';
 import { toDomainCaptureMethod, toPersistedPaymentStatus } from './payment-status';
 import {
-  IdempotencyKeyConflictException,
   PaymentConcurrencyConflictException,
   PaymentCustomerArchivedException,
   PaymentCustomerNotFoundException,
@@ -46,7 +44,6 @@ import {
   mapPaymentPrismaError,
 } from './payment.exceptions';
 import {
-  PAYMENT_CREATE_IDEMPOTENCY_SCOPE,
   PAYMENT_DESCRIPTION_MAX_LENGTH,
   PAYMENT_FAILURE_CODE_MAX_LENGTH,
   PAYMENT_FAILURE_MESSAGE_MAX_LENGTH,
@@ -81,6 +78,7 @@ export class PaymentsService {
     private readonly databaseService: DatabaseService,
     private readonly auditService: AuditService,
     private readonly logger: PinoLogger,
+    private readonly idempotency: IdempotencyService,
   ) {
     this.logger.setContext(PaymentsService.name);
   }
@@ -90,8 +88,7 @@ export class PaymentsService {
     actor: AuditActor,
     requestContext?: RequestContext,
   ): Promise<PaymentRow> {
-    const idempotencyKey = canonicalizeIdempotencyKey(input.idempotencyKey);
-    const keyHash = hashIdempotencyKey(idempotencyKey);
+    const { keyHash } = parseApiIdempotencyKey(input.idempotencyKey);
     const requestedAmount = parsePositiveMinorUnitAmount(input.amount);
     const description =
       input.description === undefined ? undefined : canonicalizeDescription(input.description);
@@ -118,9 +115,14 @@ export class PaymentsService {
       ...(description !== undefined ? { description } : {}),
     });
 
-    const existing = await this.findIdempotentReplay(input.organizationId, keyHash, fingerprint);
+    const existing = await this.idempotency.resolveReplay(this.databaseService.getClient(), {
+      organizationId: input.organizationId,
+      scope: IDEMPOTENCY_SCOPES.PAYMENT_CREATE,
+      keyHash,
+      requestFingerprint: fingerprint,
+    });
     if (existing !== undefined) {
-      return existing;
+      return this.get(input.organizationId, existing.resourceId);
     }
 
     const db = this.databaseService.getClient();
@@ -146,15 +148,13 @@ export class PaymentsService {
           },
         });
 
-        await tx.idempotencyRecord.create({
-          data: {
-            organizationId: input.organizationId,
-            scope: PAYMENT_CREATE_IDEMPOTENCY_SCOPE,
-            keyHash,
-            requestFingerprint: fingerprint,
-            resourceType: 'payment',
-            resourceId: created.id,
-          },
+        await this.idempotency.bindCompleted(tx, {
+          organizationId: input.organizationId,
+          scope: IDEMPOTENCY_SCOPES.PAYMENT_CREATE,
+          keyHash,
+          requestFingerprint: fingerprint,
+          resourceType: IDEMPOTENCY_RESOURCE_TYPES.PAYMENT,
+          resourceId: created.id,
         });
 
         await this.auditService.write(tx, {
@@ -183,9 +183,14 @@ export class PaymentsService {
         throw mappedDomain;
       }
       if (isIdempotencyUnique(error)) {
-        const replay = await this.findIdempotentReplay(input.organizationId, keyHash, fingerprint);
+        const replay = await this.idempotency.resolveReplay(this.databaseService.getClient(), {
+          organizationId: input.organizationId,
+          scope: IDEMPOTENCY_SCOPES.PAYMENT_CREATE,
+          keyHash,
+          requestFingerprint: fingerprint,
+        });
         if (replay !== undefined) {
-          return replay;
+          return this.get(input.organizationId, replay.resourceId);
         }
         throw new PaymentConcurrencyConflictException();
       }
@@ -475,29 +480,6 @@ export class PaymentsService {
     if (customer.status === 'ARCHIVED') {
       throw new PaymentCustomerArchivedException();
     }
-  }
-
-  private async findIdempotentReplay(
-    organizationId: string,
-    keyHash: string,
-    fingerprint: string,
-  ): Promise<PaymentRow | undefined> {
-    const record = await this.databaseService.getClient().idempotencyRecord.findUnique({
-      where: {
-        organizationId_scope_keyHash: {
-          organizationId,
-          scope: PAYMENT_CREATE_IDEMPOTENCY_SCOPE,
-          keyHash,
-        },
-      },
-    });
-    if (record === null) {
-      return undefined;
-    }
-    if (record.requestFingerprint !== fingerprint) {
-      throw new IdempotencyKeyConflictException();
-    }
-    return this.get(organizationId, record.resourceId);
   }
 }
 

@@ -8,9 +8,11 @@ authentication, immutable tenant audit logging, the outbox/inbox
 substrate, the provider-neutral payment domain
 (`@fraterunion-payments/payment-core`), provider contracts
 (`@fraterunion-payments/provider-contracts`), canonical customers
-with provider mappings, persisted canonical payments, and persisted
-canonical refunds without provider execution (see the root
-[`README.md`](../../README.md)); this document still defines the broader
+with provider mappings, persisted canonical payments, persisted
+canonical refunds without provider execution, and durable
+financial-command idempotency (`idempotency_records`; see
+[`idempotency.md`](./idempotency.md)). See the root
+[`README.md`](../../README.md). This document still defines the broader
 target shape later commits build toward.
 
 Last updated: 2026-09-02

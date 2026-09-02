@@ -168,6 +168,18 @@ enum RefundReason {
   @@map("refund_reason")
 }
 
+/// Financial-command idempotency lifecycle. `COMPLETED` means the FUP
+/// logical command has a durable result/binding — not that money settled
+/// at a provider. `IN_PROGRESS` means the operation is reserved and the
+/// outcome is not yet conclusive. There is no `FAILED`: a provider timeout
+/// is an unknown outcome, not a safe failure.
+enum IdempotencyRecordStatus {
+  IN_PROGRESS
+  COMPLETED
+
+  @@map("idempotency_record_status")
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -720,34 +732,41 @@ model Payment {
   @@map("payments")
 }
 
-/// Durable financial-operation idempotency. Absorbs the former narrow
-/// `payment_create_idempotency_keys` table. Unique per
+/// Durable financial-operation idempotency. Unique per
 /// `(organizationId, scope, keyHash)` where `keyHash` is SHA-256 of the
-/// `Idempotency-Key` header. The raw key is not stored. `resourceId` binds
-/// the key to a durable aggregate (payment, refund, …) rather than caching
-/// an HTTP body. Records currently remain indefinitely — no silent expiry.
+/// `Idempotency-Key` header. The raw key is not stored. `id` is the FUP
+/// operation identity used later to derive a provider idempotency key —
+/// never the client header.
 ///
-/// Scopes in this commit: `payment.create`, `refund.create`. Capture,
-/// cancel, and provider-operation scopes remain for a later hardening
-/// commit. There is no polymorphic FK to the resource — creation of the
-/// resource and this row share one transaction.
+/// `resourceType` / `resourceId` is the durable subject/result identity,
+/// not a claim that this record created the row. Create scopes bind the
+/// created Payment/Refund. Mutation scopes (authorize, capture, cancel,
+/// execute) bind the existing target aggregate. There is no polymorphic
+/// FK — the financial mutation and this row share the caller's transaction.
+///
+/// Atomic creates insert `COMPLETED`. Future provider commands may insert
+/// `IN_PROGRESS` first. Records are retained indefinitely until a
+/// deliberate retention policy exists. No worker lease lives here.
 model IdempotencyRecord {
-  id                 String @id @default(uuid(7)) @db.Uuid
-  organizationId     String @map("organization_id") @db.Uuid
-  /// Stable operation name, for example `payment.create`.
-  scope              String @db.VarChar(64)
-  keyHash            String @map("key_hash") @db.Char(64)
-  requestFingerprint String @map("request_fingerprint") @db.Char(64)
-  resourceType       String @map("resource_type") @db.VarChar(64)
-  resourceId         String @map("resource_id") @db.Uuid
+  id                 String                  @id @default(uuid(7)) @db.Uuid
+  organizationId     String                  @map("organization_id") @db.Uuid
+  /// Registry-validated operation name, for example `payment.create`.
+  scope              String                  @db.VarChar(64)
+  keyHash            String                  @map("key_hash") @db.Char(64)
+  requestFingerprint String                  @map("request_fingerprint") @db.Char(64)
+  resourceType       String                  @map("resource_type") @db.VarChar(64)
+  resourceId         String                  @map("resource_id") @db.Uuid
+  status             IdempotencyRecordStatus @default(COMPLETED)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, scope, keyHash], map: "idempotency_records_org_scope_key_uidx")
   @@unique([scope, resourceId], map: "idempotency_records_scope_resource_uidx")
   @@index([organizationId, resourceType, resourceId], map: "idempotency_records_org_resource_idx")
+  @@index([organizationId, status, updatedAt], map: "idempotency_records_org_status_updated_idx")
   @@map("idempotency_records")
 }
 

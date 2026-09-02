@@ -21,11 +21,13 @@ import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES, type AuditActor } from '../audit/audit.types';
 import type { RequestContext } from '../auth/types/request-context.type';
 import { DatabaseService } from '../database/database.service';
-import { canonicalizeIdempotencyKey, hashIdempotencyKey } from '../idempotency/idempotency';
+import { parseApiIdempotencyKey } from '../idempotency/idempotency';
 import {
   IdempotencyKeyConflictException,
+  IdempotencyOperationInProgressException,
   isIdempotencyUnique,
 } from '../idempotency/idempotency.exceptions';
+import { IdempotencyService } from '../idempotency/idempotency.service';
 import { IDEMPOTENCY_RESOURCE_TYPES } from '../idempotency/idempotency.types';
 import { parsePositiveMinorUnitAmount } from '../payments/payment-amount';
 import { toDomainPayment, toPaymentPersistenceUpdate } from '../payments/payment-mapper';
@@ -82,6 +84,7 @@ export class RefundsService {
     private readonly databaseService: DatabaseService,
     private readonly auditService: AuditService,
     private readonly logger: PinoLogger,
+    private readonly idempotency: IdempotencyService,
   ) {
     this.logger.setContext(RefundsService.name);
   }
@@ -91,8 +94,7 @@ export class RefundsService {
     actor: AuditActor,
     requestContext?: RequestContext,
   ): Promise<RefundRow> {
-    const idempotencyKey = canonicalizeIdempotencyKey(input.idempotencyKey);
-    const keyHash = hashIdempotencyKey(idempotencyKey);
+    const { keyHash } = parseApiIdempotencyKey(input.idempotencyKey);
     const amount = parsePositiveMinorUnitAmount(input.amount);
     const metadata = assertSafeRefundMetadata(input.metadata ?? {});
     const fingerprint = refundCreateFingerprint({
@@ -103,7 +105,12 @@ export class RefundsService {
       ...(input.reason !== undefined ? { reason: input.reason } : {}),
     });
 
-    const existing = await this.findIdempotentReplay(input.organizationId, keyHash, fingerprint);
+    const existing = await this.replayCompletedRefund(
+      this.databaseService.getClient(),
+      input.organizationId,
+      keyHash,
+      fingerprint,
+    );
     if (existing !== undefined) {
       return existing;
     }
@@ -113,7 +120,7 @@ export class RefundsService {
       return await db.$transaction(async (tx) => {
         const payment = await this.lockPayment(tx, input.organizationId, input.paymentId);
 
-        const replay = await this.findIdempotentReplayOn(
+        const replay = await this.replayCompletedRefund(
           tx,
           input.organizationId,
           keyHash,
@@ -164,15 +171,13 @@ export class RefundsService {
           },
         });
 
-        await tx.idempotencyRecord.create({
-          data: {
-            organizationId: input.organizationId,
-            scope: REFUND_CREATE_IDEMPOTENCY_SCOPE,
-            keyHash,
-            requestFingerprint: fingerprint,
-            resourceType: IDEMPOTENCY_RESOURCE_TYPES.REFUND,
-            resourceId: created.id,
-          },
+        await this.idempotency.bindCompleted(tx, {
+          organizationId: input.organizationId,
+          scope: REFUND_CREATE_IDEMPOTENCY_SCOPE,
+          keyHash,
+          requestFingerprint: fingerprint,
+          resourceType: IDEMPOTENCY_RESOURCE_TYPES.REFUND,
+          resourceId: created.id,
         });
 
         await this.auditService.write(tx, {
@@ -204,7 +209,12 @@ export class RefundsService {
         throw error;
       }
       if (isIdempotencyUnique(error)) {
-        const replay = await this.findIdempotentReplay(input.organizationId, keyHash, fingerprint);
+        const replay = await this.replayCompletedRefund(
+          this.databaseService.getClient(),
+          input.organizationId,
+          keyHash,
+          fingerprint,
+        );
         if (replay !== undefined) {
           return replay;
         }
@@ -533,39 +543,20 @@ export class RefundsService {
     };
   }
 
-  private async findIdempotentReplay(
-    organizationId: string,
-    keyHash: string,
-    fingerprint: string,
-  ): Promise<RefundRow | undefined> {
-    return this.findIdempotentReplayOn(
-      this.databaseService.getClient(),
-      organizationId,
-      keyHash,
-      fingerprint,
-    );
-  }
-
-  private async findIdempotentReplayOn(
+  private async replayCompletedRefund(
     client: TransactionClient | ReturnType<DatabaseService['getClient']>,
     organizationId: string,
     keyHash: string,
     fingerprint: string,
   ): Promise<RefundRow | undefined> {
-    const record = await client.idempotencyRecord.findUnique({
-      where: {
-        organizationId_scope_keyHash: {
-          organizationId,
-          scope: REFUND_CREATE_IDEMPOTENCY_SCOPE,
-          keyHash,
-        },
-      },
+    const record = await this.idempotency.resolveReplay(client, {
+      organizationId,
+      scope: REFUND_CREATE_IDEMPOTENCY_SCOPE,
+      keyHash,
+      requestFingerprint: fingerprint,
     });
-    if (record === null) {
+    if (record === undefined) {
       return undefined;
-    }
-    if (record.requestFingerprint !== fingerprint) {
-      throw new IdempotencyKeyConflictException();
     }
     return this.getFrom(client, organizationId, record.resourceId);
   }
@@ -670,6 +661,7 @@ function isRefundApplicationError(error: unknown): boolean {
     error instanceof RefundNotFoundException ||
     error instanceof RefundPaymentNotFoundException ||
     error instanceof RefundValidationException ||
-    error instanceof IdempotencyKeyConflictException
+    error instanceof IdempotencyKeyConflictException ||
+    error instanceof IdempotencyOperationInProgressException
   );
 }

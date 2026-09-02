@@ -219,10 +219,10 @@ capacity must not turn a legitimate replay into
 Concurrent same-key creates: unique index plus in-transaction lookup
 after the payment lock. The loser rolls back and replays.
 
-Capture/cancel/provider-operation scopes remain for a later
-`feat(idempotency): add idempotent financial operations` hardening
-commit (retention, recovery, additional mutation scopes). This commit
-does not keep artificial work just to preserve roadmap numbering.
+See [`idempotency.md`](./idempotency.md) for the reusable financial-command
+primitive (`IN_PROGRESS` / `COMPLETED`, reserved `refund.execute` scope,
+provider-key derivation). This file remains the refund-capacity source of
+truth. Capture/cancel/execute HTTP endpoints are still future work.
 
 ## Public vs internal operations
 

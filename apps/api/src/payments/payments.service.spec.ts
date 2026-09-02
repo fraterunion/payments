@@ -1,4 +1,5 @@
 import { PaymentCaptureMethod, PaymentStatus } from '@fraterunion-payments/database';
+import { IdempotencyService } from '../idempotency/idempotency.service';
 import { PaymentsService } from './payments.service';
 import { InvalidPaymentAmountException, PaymentNotFoundException } from './payment.exceptions';
 
@@ -32,7 +33,12 @@ function createService(client: Record<string, unknown>) {
   };
   const auditService = { write: jest.fn().mockResolvedValue({}) };
   const logger = { setContext: jest.fn(), info: jest.fn() };
-  return new PaymentsService(databaseService as never, auditService as never, logger as never);
+  return new PaymentsService(
+    databaseService as never,
+    auditService as never,
+    logger as never,
+    new IdempotencyService(),
+  );
 }
 
 describe('PaymentsService', () => {

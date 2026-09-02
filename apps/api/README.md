@@ -43,6 +43,7 @@ src/
 │   ├── database.service.ts     owns the Prisma client's connect/disconnect lifecycle
 │   └── database.types.ts
 ├── audit/                       AuditService.write/list — append-only, tenant-scoped (not global; no public CRUD)
+├── idempotency/                  Financial-command idempotency (no public HTTP)
 ├── customers/                    Customer CRUD/archive, provider-mapping service (create is service-only)
 ├── payments/                     Canonical payment create/get/list; internal lifecycle; create idempotency
 ├── auth/                         see below and
@@ -191,6 +192,13 @@ integer minor units as a decimal string (`"5000"`). Currency is taken
 from the payment. `CREATED` reserves capacity; it does not mean money
 moved externally. Public lifecycle mutation endpoints are intentionally
 absent. See [`../../docs/architecture/refunds.md`](../../docs/architecture/refunds.md).
+
+## Financial idempotency
+
+`POST /payments` and nested refund create require `Idempotency-Key`. There
+is no public idempotency management API and no authorize/capture/cancel
+or refund-execute endpoint. See
+[`../../docs/architecture/idempotency.md`](../../docs/architecture/idempotency.md).
 
 ## Swagger
 
@@ -377,7 +385,7 @@ pnpm test:api:auth:integration # real PostgreSQL auth suite — requires DATABAS
   throws. The shared helper deletes tracked IDs, historical `cust-`
   leftovers, and namespace rows older than one hour — never the live
   fixtures of a parallel Jest worker. Delete order is RESTRICT-safe:
-  mappings, payment idempotency keys, payments, customers, outbox/inbox, API keys, audit (user triggers
+  mappings, refunds, payments, idempotency records, customers, outbox/inbox, API keys, audit (user triggers
   disabled only for that delete; production code never does this),
   users, then organizations. Seed `fraterunion` /
   `@fraterunion.local` is never removed. See

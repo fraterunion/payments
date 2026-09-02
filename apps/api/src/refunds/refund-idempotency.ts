@@ -1,5 +1,5 @@
 import type { RefundReason } from '@fraterunion-payments/database';
-import { fingerprintCanonicalPayload } from '../idempotency/idempotency';
+import { fingerprintFinancialCommand } from '../idempotency/idempotency';
 import { REFUND_CREATE_IDEMPOTENCY_SCOPE } from './refund.types';
 
 export type RefundCreateFingerprintInput = {
@@ -11,12 +11,14 @@ export type RefundCreateFingerprintInput = {
 };
 
 export function refundCreateFingerprint(input: RefundCreateFingerprintInput): string {
-  return fingerprintCanonicalPayload({
+  return fingerprintFinancialCommand({
     scope: REFUND_CREATE_IDEMPOTENCY_SCOPE,
     organizationId: input.organizationId,
-    paymentId: input.paymentId,
-    amount: input.amount.toString(10),
-    reason: input.reason ?? null,
-    metadata: input.metadata,
+    request: {
+      paymentId: input.paymentId,
+      amount: input.amount.toString(10),
+      reason: input.reason ?? null,
+      metadata: input.metadata,
+    },
   });
 }

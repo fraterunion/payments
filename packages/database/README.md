@@ -7,8 +7,9 @@ Payments. This package establishes the Prisma/PostgreSQL foundation and the
 core multi-tenant identity schema: organizations, users, user credentials,
 memberships, API keys, sessions, the audit log, the transactional
 outbox / durable inbox tables, customers, customer-provider mappings,
-canonical payments, and payment-create idempotency keys. It intentionally
-does not include refund, ledger, webhook, or provider account entities — see
+canonical payments, canonical refunds, and durable financial-operation
+idempotency (`idempotency_records`). It intentionally does not include
+ledger, webhook, or provider account entities — see
 [`../../docs/decisions/ADR-002-postgresql-and-prisma.md`](../../docs/decisions/ADR-002-postgresql-and-prisma.md)
 and
 [`../../docs/decisions/ADR-003-multi-tenant-organization-model.md`](../../docs/decisions/ADR-003-multi-tenant-organization-model.md)
@@ -191,8 +192,14 @@ added in `add_refunds` (timestamp `20260902170000`, after
 idempotency rows into `idempotency_records` with `scope = payment.create`
 before dropping the narrow table, and adds refund monetary CHECKs,
 composite payment/tenant FK, and failure-field consistency.
-New migration timestamps must sort after the latest already-committed
-migration (`20260902170000` at the time of that commit).
+Financial-command idempotency was hardened in
+`harden_financial_idempotency` (timestamp `20260902180000`): status
+`IN_PROGRESS` / `COMPLETED` (existing rows backfilled `COMPLETED`),
+`updated_at`, scope/resource-type shape CHECKs, and a status index.
+Existing `payment.create` / `refund.create` key hashes and fingerprints
+were not rewritten. New migration timestamps must sort after the latest
+already-committed migration (`20260902180000` at the time of that
+commit).
 
 Before committing a migration:
 
@@ -357,7 +364,8 @@ Indexes were added for known query shapes, not speculatively:
   `(organizationId, status, createdAt)`, unique `(id, organizationId)`.
 - `IdempotencyRecord`: unique `(organizationId, scope, keyHash)` and
   unique `(scope, resourceId)`, plus
-  `(organizationId, resourceType, resourceId)`.
+  `(organizationId, resourceType, resourceId)` and
+  `(organizationId, status, updatedAt)`.
 
 ## Database-enforced vs. application-enforced validation
 
@@ -395,6 +403,9 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
   enforced in the application transaction that locks the parent payment.
 - Idempotency CHECKs in `add_refunds`: SHA-256 hex for `key_hash` and
   `request_fingerprint`, non-empty `scope` and `resource_type`.
+  `harden_financial_idempotency` adds lowercase-dot `scope` shape,
+  lowercase `resource_type` shape, and the `idempotency_record_status`
+  enum (`IN_PROGRESS`, `COMPLETED`).
 - Audit immutability in `enforce_immutable_audit_logs`:
   `BEFORE UPDATE OR DELETE` (and `BEFORE TRUNCATE`) raises
   `audit_logs is append-only`; CHECK constraints forbid both actor FKs,

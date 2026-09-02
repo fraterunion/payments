@@ -173,17 +173,19 @@ loser receives `PAYMENT_INVALID_TRANSITION`.
 
 ## Idempotent creation
 
-Payment creation is financial and must be idempotent. Durable records now
-live on the generalized `idempotency_records` table (unique
-`(organizationId, scope, keyHash)`), with `scope = payment.create` and
-`resourceType = payment`. See [`refunds.md`](./refunds.md) for the
-refund.create scope and the migration from the former narrow
-`payment_create_idempotency_keys` table.
+Payment creation is financial and must be idempotent. Durable records live
+on `idempotency_records` (unique `(organizationId, scope, keyHash)`), with
+`scope = payment.create` and `resourceType = payment`. See
+[`idempotency.md`](./idempotency.md) for the reusable financial-command
+primitive, reserved mutation scopes, `IN_PROGRESS` / `COMPLETED`, and
+provider-key derivation. Refund create is documented in
+[`refunds.md`](./refunds.md).
 
 The raw `Idempotency-Key` header is hashed, not stored. The fingerprint
-is SHA-256 of canonically serialized:
+is SHA-256 of canonically serialized, domain-separated:
 
 ```text
+scope = payment.create
 organizationId
 customerId
 requested amount
