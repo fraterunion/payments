@@ -378,11 +378,10 @@ the very next request is rejected.
 
 `API_KEY_SCOPES` (`apps/api/src/common/constants/api-key-scopes.constants.ts`)
 is the complete, closed vocabulary an API key can be assigned:
-`organizations:read`, `api_keys:read`, `api_keys:write`. **No
-payment-related scope exists yet** — this commit implements no payment
-functionality, and adding an unassignable, unenforced `payments:*` scope
-now would misrepresent it as implemented. New scopes are added only when
-the resource they guard actually exists.
+`organizations:read`, `api_keys:read`, `api_keys:write`,
+`customers:read`, `customers:write`. Payment-related scopes are still
+absent. New scopes are added only when the resource they guard actually
+exists. See [`customers.md`](./customers.md) for customer RBAC.
 
 `@RequireScopes(...)` + `RequireScopesGuard` enforce that an `API_KEY`
 principal holds every listed scope. The guard is a **no-op for `USER`

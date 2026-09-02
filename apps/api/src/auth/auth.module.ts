@@ -35,5 +35,17 @@ import { SessionService } from './services/session.service';
     RequireRolesGuard,
     RequireScopesGuard,
   ],
+  exports: [
+    AccessTokenService,
+    SessionService,
+    ApiKeyService,
+    HumanJwtAuthGuard,
+    ApiKeyAuthGuard,
+    EitherAuthGuard,
+    ActiveSessionGuard,
+    OrganizationContextGuard,
+    RequireRolesGuard,
+    RequireScopesGuard,
+  ],
 })
 export class AuthModule {}

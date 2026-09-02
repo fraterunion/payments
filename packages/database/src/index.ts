@@ -9,6 +9,8 @@ export {
   ApiEnvironment,
   OutboxEventStatus,
   InboxEventStatus,
+  CustomerType,
+  CustomerStatus,
 } from '../generated/client/index.js';
 
 export type {
@@ -21,6 +23,8 @@ export type {
   AuditLog,
   OutboxEvent,
   InboxEvent,
+  Customer,
+  CustomerProviderMapping,
 } from '../generated/client/index.js';
 
 export { createPrismaClient } from './client.js';

@@ -1,4 +1,4 @@
-// FraterUnion Payments — core tenancy schema.
+// FraterUnion Payments — core tenancy and customer schema.
 // See packages/database/README.md for naming conventions, deletion policy,
 // indexing rationale, and the database-enforced vs. application-enforced
 // validation boundary. See docs/decisions/ADR-002 and ADR-003.
@@ -93,6 +93,20 @@ enum InboxEventStatus {
   @@map("inbox_event_status")
 }
 
+enum CustomerType {
+  INDIVIDUAL
+  BUSINESS
+
+  @@map("customer_type")
+}
+
+enum CustomerStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("customer_status")
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -131,11 +145,13 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships  OrganizationMembership[]
-  apiKeys      ApiKey[]
-  auditLogs    AuditLog[]
-  outboxEvents OutboxEvent[]
-  inboxEvents  InboxEvent[]
+  memberships              OrganizationMembership[]
+  apiKeys                  ApiKey[]
+  auditLogs                AuditLog[]
+  outboxEvents             OutboxEvent[]
+  inboxEvents              InboxEvent[]
+  customers                Customer[]
+  customerProviderMappings CustomerProviderMapping[]
 
   @@index([status])
   @@index([type])
@@ -500,4 +516,85 @@ model InboxEvent {
   @@index([receivedAt])
   @@index([processedAt])
   @@map("inbox_events")
+}
+
+/// Canonical FraterUnion Payments customer. This is not a Stripe (or any
+/// other provider) customer. Provider identifiers live on
+/// `CustomerProviderMapping`. Email is a contact field, not identity —
+/// it is not unique. Organizations never physically delete customers;
+/// they archive them (`status` + `archivedAt`). CHECK constraints in
+/// `add_customers_and_provider_mappings` keep those two columns aligned
+/// and require metadata to be a JSON object.
+///
+/// `@@unique([id, organizationId])` exists so mappings can take a
+/// composite FK and cannot attach to a customer from another tenant.
+model Customer {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  type   CustomerType   @default(INDIVIDUAL)
+  status CustomerStatus @default(ACTIVE)
+
+  /// Canonical (trim + lowercase) contact email. Not unique. Not auth.
+  email             String? @db.VarChar(320)
+  name              String? @db.VarChar(200)
+  /// E.164 when present (application-validated).
+  phone             String? @db.VarChar(16)
+  /// Tenant-owned integration key (for example a GymOS member id). Unique
+  /// per organization when non-null. Not a provider identifier.
+  externalReference String? @map("external_reference") @db.VarChar(128)
+  description       String? @db.VarChar(2000)
+
+  metadata Json @default("{}")
+
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  providerMappings CustomerProviderMapping[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, externalReference], map: "customers_org_external_ref_uidx")
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, email])
+  @@map("customers")
+}
+
+/// Mapping from a canonical FUP customer to one provider customer resource.
+/// Create/read only — identity fields do not update. Provider account
+/// uniqueness uses `providerAccountScope`, a non-null key: `default` when
+/// no account is specified, `acct:<id>` when one is. That avoids SQL NULL
+/// uniqueness holes and cannot collide with a raw account id of "default".
+///
+/// Composite FK `(customerId, organizationId) → customers(id, organizationId)`
+/// plus `organizationId → organizations` keeps mapping and customer tenants
+/// identical. CHECK constraints in the migration keep scope/account aligned.
+model CustomerProviderMapping {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  customerId     String @map("customer_id") @db.Uuid
+
+  /// Validated `PaymentProviderCode` (not a closed enum).
+  provider                 String  @db.VarChar(32)
+  /// Optional opaque merchant/account identity. Not a FK — ProviderAccount
+  /// persistence is not implemented yet.
+  providerAccountReference String? @map("provider_account_reference") @db.VarChar(255)
+  /// Always non-null uniqueness scope. See model comment.
+  providerAccountScope     String  @map("provider_account_scope") @db.VarChar(261)
+  providerCustomerId       String  @map("provider_customer_id") @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customer     Customer     @relation(fields: [customerId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, provider, providerAccountScope, providerCustomerId], map: "customer_provider_mappings_provider_identity_uidx")
+  @@unique([customerId, provider, providerAccountScope], map: "customer_provider_mappings_customer_provider_scope_uidx")
+  @@index([organizationId, customerId])
+  @@index([organizationId, provider, providerAccountScope])
+  @@map("customer_provider_mappings")
 }

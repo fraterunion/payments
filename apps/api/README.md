@@ -6,9 +6,9 @@ The NestJS API is the FraterUnion Payments HTTP surface. It provides
 production-ready API infrastructure (typed configuration, health checks,
 database lifecycle, structured logging, request correlation, global
 validation and error handling, versioning, Swagger) and, as of the `auth`
-module, human authentication, organization-scoped API keys, and
-role/scope-based access control. Payment, customer, and provider domains
-remain out of scope. See
+and `customers` modules, human authentication, organization-scoped API keys,
+role/scope-based access control, and tenant-safe customers with provider
+mappings. Payment, billing, and provider adapters remain out of scope. See
 [ADR-001](../../docs/decisions/ADR-001-nestjs-nextjs-and-typescript.md) for
 why NestJS was chosen,
 [`../../docs/architecture/security-boundaries.md`](../../docs/architecture/security-boundaries.md)
@@ -42,6 +42,7 @@ src/
 │   ├── database.service.ts     owns the Prisma client's connect/disconnect lifecycle
 │   └── database.types.ts
 ├── audit/                       AuditService.write/list — append-only, tenant-scoped (not global; no public CRUD)
+├── customers/                    Customer CRUD/archive, provider-mapping service (create is service-only)
 ├── auth/                         see below and
 │   │                             ../../docs/architecture/authentication-and-access-control.md
 │   ├── auth.module.ts

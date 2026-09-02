@@ -26,6 +26,12 @@ export class RequireRolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<OrganizationScopedRequest>();
+
+    // API keys are authorized by scopes (`RequireScopesGuard`), not roles.
+    if (request.principal.type === 'API_KEY') {
+      return true;
+    }
+
     const role = request.organizationContext.role;
 
     if (role === undefined || !requiredRoles.includes(role)) {

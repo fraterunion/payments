@@ -24,6 +24,10 @@ export async function deleteTenantsForTests(
   }
 
   if (organizationIds.length > 0) {
+    await db.customerProviderMapping.deleteMany({
+      where: { organizationId: { in: [...organizationIds] } },
+    });
+    await db.customer.deleteMany({ where: { organizationId: { in: [...organizationIds] } } });
     await db.apiKey.deleteMany({ where: { organizationId: { in: [...organizationIds] } } });
   }
   if (userIds.length > 0) {

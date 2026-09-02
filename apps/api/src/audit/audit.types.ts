@@ -16,6 +16,10 @@ export const AUDIT_ACTIONS = {
   AUTH_REFRESH_REUSE_DETECTED: 'auth.refresh_reuse_detected',
   API_KEY_CREATED: 'api_key.created',
   API_KEY_REVOKED: 'api_key.revoked',
+  CUSTOMER_CREATED: 'customer.created',
+  CUSTOMER_UPDATED: 'customer.updated',
+  CUSTOMER_ARCHIVED: 'customer.archived',
+  CUSTOMER_PROVIDER_MAPPING_CREATED: 'customer.provider_mapping_created',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});
@@ -25,6 +29,8 @@ export const AUDIT_RESOURCE_TYPES = {
   USER: 'user',
   SESSION: 'session',
   API_KEY: 'api_key',
+  CUSTOMER: 'customer',
+  CUSTOMER_PROVIDER_MAPPING: 'customer_provider_mapping',
 } as const;
 
 export type AuditResourceType =

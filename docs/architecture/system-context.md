@@ -6,8 +6,9 @@ Authoritative. Describes the intended system context and deployment model
 for FraterUnion Payments. The monorepo currently implements tenancy,
 authentication, immutable tenant audit logging, the outbox/inbox
 substrate, the provider-neutral payment domain
-(`@fraterunion-payments/payment-core`), and provider contracts
-(`@fraterunion-payments/provider-contracts`; see the root
+(`@fraterunion-payments/payment-core`), provider contracts
+(`@fraterunion-payments/provider-contracts`), and canonical customers
+with provider mappings (see the root
 [`README.md`](../../README.md)); this document still defines the broader
 target shape later commits build toward.
 

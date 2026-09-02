@@ -6,8 +6,14 @@ import { RequireRolesGuard } from './require-roles.guard';
 
 function createContext(
   organizationContext: OrganizationScopedRequest['organizationContext'],
+  principal: OrganizationScopedRequest['principal'] = {
+    type: 'USER',
+    userId: 'user-1',
+    sessionId: 'session-1',
+    email: 'owner@example.com',
+  },
 ): ExecutionContext {
-  const request = { organizationContext };
+  const request = { organizationContext, principal };
   return {
     switchToHttp: () => ({ getRequest: () => request }),
     getHandler: () => undefined,
@@ -43,10 +49,26 @@ describe('RequireRolesGuard', () => {
     expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
   });
 
-  it('rejects when organizationContext has no role at all', () => {
+  it('rejects a human principal when organizationContext has no role', () => {
     const guard = new RequireRolesGuard(createFakeReflector(['OWNER']) as Reflector);
     const context = createContext({ organizationId: 'org-1' });
 
     expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
+
+  it('allows an API-key principal; scopes are enforced separately', () => {
+    const guard = new RequireRolesGuard(createFakeReflector(['OWNER', 'ADMIN']) as Reflector);
+    const context = createContext(
+      { organizationId: 'org-1' },
+      {
+        type: 'API_KEY',
+        apiKeyId: 'key-1',
+        organizationId: 'org-1',
+        environment: 'TEST',
+        scopes: ['customers:write'],
+      },
+    );
+
+    expect(guard.canActivate(context)).toBe(true);
   });
 });

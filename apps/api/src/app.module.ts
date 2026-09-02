@@ -2,6 +2,7 @@ import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
+import { CustomersModule } from './customers/customers.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { AppConfigModule } from './config/app-config.module';
 import type { Environment } from './config/environment.types';
@@ -30,6 +31,7 @@ export class AppModule {
         HealthModule,
         RootModule,
         AuthModule,
+        CustomersModule,
       ],
       providers: [{ provide: APP_FILTER, useClass: GlobalExceptionFilter }],
     };
