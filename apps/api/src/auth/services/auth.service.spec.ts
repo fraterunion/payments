@@ -67,8 +67,8 @@ function createDeps(db: ReturnType<typeof createFakeDb>) {
     getSession: jest.fn(),
   };
 
-  const auditService: Pick<AuditService, 'record'> = {
-    record: jest.fn().mockResolvedValue(undefined),
+  const auditService: Pick<AuditService, 'write'> = {
+    write: jest.fn().mockResolvedValue({}),
   };
 
   const memberships: Pick<OrganizationMembershipService, 'findSoleMembership'> = {
@@ -139,9 +139,9 @@ describe('AuthService.register', () => {
       data: { organizationId: 'org-1', userId: 'user-1', role: 'OWNER' },
     });
     expect(sessionService.createSession).toHaveBeenCalledWith('user-1', { requestId: 'req-1' }, db);
-    expect(auditService.record).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: 'org-1', action: 'auth.registered' }),
+    expect(auditService.write).toHaveBeenCalledWith(
       db,
+      expect.objectContaining({ organizationId: 'org-1', action: 'auth.registered' }),
     );
     expect(accessTokenService.issue).toHaveBeenCalledWith({
       userId: 'user-1',
@@ -253,7 +253,8 @@ describe('AuthService.login', () => {
       where: { id: 'user-1' },
       data: { lastLoginAt: expect.any(Date) },
     });
-    expect(auditService.record).toHaveBeenCalledWith(
+    expect(auditService.write).toHaveBeenCalledWith(
+      db,
       expect.objectContaining({ organizationId: 'org-1', action: 'auth.login_succeeded' }),
     );
     expect(accessTokenService.issue).toHaveBeenCalled();
@@ -331,7 +332,7 @@ describe('AuthService.logout / logoutAll', () => {
 
     expect(sessionService.revokeSession).toHaveBeenCalledWith(
       'session-1',
-      { type: 'user', userId: 'user-1' },
+      { type: 'USER', userId: 'user-1' },
       {},
     );
   });
@@ -344,7 +345,7 @@ describe('AuthService.logout / logoutAll', () => {
 
     expect(sessionService.revokeAllSessions).toHaveBeenCalledWith(
       'user-1',
-      { type: 'user', userId: 'user-1' },
+      { type: 'USER', userId: 'user-1' },
       {},
     );
   });

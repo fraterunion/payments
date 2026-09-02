@@ -80,7 +80,7 @@ export class ApiKeysController {
         createdByUserId: principal.userId,
         ...(dto.expiresAt !== undefined ? { expiresAt: new Date(dto.expiresAt) } : {}),
       },
-      { type: 'user', userId: principal.userId },
+      { type: 'USER', userId: principal.userId },
       extractRequestContext(req),
     );
 
@@ -116,7 +116,7 @@ export class ApiKeysController {
     await this.apiKeyService.revoke(
       id,
       organizationContext.organizationId,
-      { type: 'user', userId: principal.userId },
+      { type: 'USER', userId: principal.userId },
       extractRequestContext(req),
     );
   }

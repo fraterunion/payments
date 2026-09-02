@@ -139,19 +139,13 @@ export class SessionService {
 
         const organizationId = await this.resolveAuditOrganizationId(existing.userId, tx);
         if (organizationId !== undefined) {
-          await this.auditService.record(
-            {
-              organizationId,
-              actor: { type: 'user', userId: existing.userId },
-              action: AUDIT_ACTIONS.AUTH_SESSION_REFRESHED,
-              resourceType: AUDIT_RESOURCE_TYPES.SESSION,
-              resourceId: created.id,
-              ...(context.requestId !== undefined ? { requestId: context.requestId } : {}),
-              ...(context.ipAddress !== undefined ? { ipAddress: context.ipAddress } : {}),
-              ...(context.userAgent !== undefined ? { userAgent: context.userAgent } : {}),
-            },
-            tx,
-          );
+          await this.auditService.write(tx, {
+            organizationId,
+            actor: { type: 'USER', userId: existing.userId },
+            action: AUDIT_ACTIONS.AUTH_SESSION_REFRESHED,
+            resource: { type: AUDIT_RESOURCE_TYPES.SESSION, id: created.id },
+            requestContext: context,
+          });
         }
 
         return created;
@@ -193,15 +187,12 @@ export class SessionService {
 
     const organizationId = await this.resolveAuditOrganizationId(session.userId);
     if (organizationId !== undefined) {
-      await this.auditService.record({
+      await this.auditService.write(db, {
         organizationId,
         actor,
         action: AUDIT_ACTIONS.AUTH_SESSION_REVOKED,
-        resourceType: AUDIT_RESOURCE_TYPES.SESSION,
-        resourceId: sessionId,
-        ...(context.requestId !== undefined ? { requestId: context.requestId } : {}),
-        ...(context.ipAddress !== undefined ? { ipAddress: context.ipAddress } : {}),
-        ...(context.userAgent !== undefined ? { userAgent: context.userAgent } : {}),
+        resource: { type: AUDIT_RESOURCE_TYPES.SESSION, id: sessionId },
+        requestContext: context,
       });
     }
   }
@@ -223,16 +214,13 @@ export class SessionService {
 
     const organizationId = await this.resolveAuditOrganizationId(userId);
     if (organizationId !== undefined) {
-      await this.auditService.record({
+      await this.auditService.write(db, {
         organizationId,
         actor,
         action: AUDIT_ACTIONS.AUTH_ALL_SESSIONS_REVOKED,
-        resourceType: AUDIT_RESOURCE_TYPES.USER,
-        resourceId: userId,
+        resource: { type: AUDIT_RESOURCE_TYPES.USER, id: userId },
+        requestContext: context,
         metadata: { revokedCount: result.count },
-        ...(context.requestId !== undefined ? { requestId: context.requestId } : {}),
-        ...(context.ipAddress !== undefined ? { ipAddress: context.ipAddress } : {}),
-        ...(context.userAgent !== undefined ? { userAgent: context.userAgent } : {}),
       });
     }
   }
@@ -275,15 +263,13 @@ export class SessionService {
 
     const organizationId = await this.resolveAuditOrganizationId(userId);
     if (organizationId !== undefined) {
-      await this.auditService.record({
+      await this.auditService.write(db, {
         organizationId,
-        actor: { type: 'user', userId },
+        actor: { type: 'USER', userId },
         action: AUDIT_ACTIONS.AUTH_REFRESH_REUSE_DETECTED,
-        resourceType: AUDIT_RESOURCE_TYPES.SESSION,
+        resource: { type: AUDIT_RESOURCE_TYPES.SESSION },
+        requestContext: context,
         metadata: { sessionFamilyId, reason },
-        ...(context.requestId !== undefined ? { requestId: context.requestId } : {}),
-        ...(context.ipAddress !== undefined ? { ipAddress: context.ipAddress } : {}),
-        ...(context.userAgent !== undefined ? { userAgent: context.userAgent } : {}),
       });
     }
   }

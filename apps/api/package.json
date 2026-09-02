@@ -51,6 +51,7 @@
     "pino-pretty": "catalog:",
     "source-map-support": "catalog:",
     "supertest": "catalog:",
+    "dotenv": "catalog:",
     "ts-jest": "catalog:",
     "ts-loader": "catalog:",
     "ts-node": "catalog:",

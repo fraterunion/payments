@@ -41,7 +41,7 @@ src/
 │   ├── database.module.ts      not global — only imported where DatabaseService is needed
 │   ├── database.service.ts     owns the Prisma client's connect/disconnect lifecycle
 │   └── database.types.ts
-├── audit/                       AuditService — append-only security-event recording (not global)
+├── audit/                       AuditService.write/list — append-only, tenant-scoped (not global; no public CRUD)
 ├── auth/                         see below and
 │   │                             ../../docs/architecture/authentication-and-access-control.md
 │   ├── auth.module.ts
@@ -216,7 +216,7 @@ Prisma client for the whole process:
 - Always present on the response as `x-request-id`, and always present in
   `error.requestId` on every error envelope.
 - Available to controllers via the `@RequestId()` param decorator, for
-  future audit-logging and domain code.
+  audit writes and domain code.
 
 ## Error envelope
 
@@ -290,6 +290,8 @@ pnpm test:api:e2e              # e2e tests (test/*.e2e-spec.ts) — DatabaseServ
 pnpm test:api:integration:db   # real PostgreSQL smoke test — requires DATABASE_URL
 pnpm test:api:auth             # unit tests scoped to src/auth — no database required
 pnpm test:api:auth:integration # real PostgreSQL auth suite — requires DATABASE_URL
+# Audit immutability / query tests live in test/audit.integration-spec.ts
+# and run with the same jest-integration config as auth integration.
 ```
 
 - **Unit tests** cover environment validation (valid config, missing/invalid
@@ -336,8 +338,12 @@ pnpm test:api:auth:integration # real PostgreSQL auth suite — requires DATABAS
   safety), audit-record persistence, and a direct check that no plaintext
   password, refresh token, or API-key secret is ever persisted anywhere.
   Test data is created with unique, clearly-fictional identifiers and
-  deleted in `afterAll`, respecting the schema's `Restrict`/`Cascade`
-  relations (see `packages/database/README.md`).
+  cleaned up in `afterAll` by a test-only helper that temporarily
+  disables user triggers on `audit_logs` (production code never does
+  this), then deletes fixture tenants. See
+  [`docs/architecture/audit-logging.md`](../../docs/architecture/audit-logging.md)
+  and `packages/database/README.md`. There is no public `GET /audit`
+  route; `AuditService.list` is service-only.
 
 ## Graceful shutdown
 

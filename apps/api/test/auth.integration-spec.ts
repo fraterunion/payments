@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { AppConfigService } from '../src/config/app-config.service';
 import { DatabaseService } from '../src/database/database.service';
+import { deleteTenantsForTests } from './support/immutable-audit-cleanup';
 import { createTestEnvironment } from './support/test-environment';
 
 const databaseUrl = process.env['DATABASE_URL'];
@@ -54,15 +55,9 @@ interface RegisteredFixture {
   });
 
   afterAll(async () => {
-    const organizationId = { in: [...createdOrgIds] };
-    // Ordered to respect the schema's Restrict/Cascade relations (see
-    // packages/database/README.md#relation-and-deletion-policy):
-    // audit logs and API keys block organization deletion, so they go
-    // first; deleting users cascades their sessions/credential/memberships.
-    await db.auditLog.deleteMany({ where: { organizationId } });
-    await db.apiKey.deleteMany({ where: { organizationId } });
-    await db.user.deleteMany({ where: { id: { in: [...createdUserIds] } } });
-    await db.organization.deleteMany({ where: { id: { in: [...createdOrgIds] } } });
+    // Audit rows are immutable. Test cleanup is the only place that
+    // disables user triggers — never production code.
+    await deleteTenantsForTests(db, [...createdOrgIds], [...createdUserIds]);
 
     await app.close();
   });

@@ -174,6 +174,10 @@ application always writes. Transactional outbox and inbox tables were
 added in `add_transactional_outbox_and_inbox`, including CHECK
 constraints Prisma cannot declare (processed timestamp, claim fields,
 non-empty identity strings, and inbox `scopeKey` consistency).
+Append-only `audit_logs` protection — the mutation trigger, actor CHECK,
+non-empty action/resource CHECKs, JSON-object metadata CHECK, Restrict
+actor FKs, and tenant-scoped indexes — was added in
+`enforce_immutable_audit_logs`.
 
 Before committing a migration:
 
@@ -250,20 +254,20 @@ The guiding principle: **organizations are never physically deleted
 through ordinary product flows, and nothing about removing a user or
 revoking an API key may destroy audit history.** Concretely:
 
-| Relation                                               | On delete  | Why                                                                                                         |
-| ------------------------------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------------- |
-| `OrganizationMembership.organization` → `Organization` | `Restrict` | An organization cannot be deleted while any membership references it — deactivate via `status` instead.     |
-| `OrganizationMembership.user` → `User`                 | `Cascade`  | A membership has no meaning once the user it refers to is gone.                                             |
-| `ApiKey.organization` → `Organization`                 | `Restrict` | Same rationale as above.                                                                                    |
-| `ApiKey.createdByUser` → `User`                        | `SetNull`  | An API key (active or revoked) must outlive the user who created it; only the creator reference is cleared. |
-| `Session.user` → `User`                                | `Cascade`  | Sessions are ephemeral security state, not historical/audit records.                                        |
-| `Session.createdBySession` → `Session` (self)          | `SetNull`  | A rotation chain's earlier links may be pruned without invalidating the chain pointer of surviving rows.    |
-| `UserCredential.user` → `User`                         | `Cascade`  | A credential has no meaning once its user is gone; unlike `AuditLog`, this is not a historical record.      |
-| `AuditLog.organization` → `Organization`               | `Restrict` | Audit history is tied to a tenant that must exist.                                                          |
-| `AuditLog.actorUser` → `User`                          | `SetNull`  | Deleting or deactivating a user must never delete the audit events they caused.                             |
-| `AuditLog.actorApiKey` → `ApiKey`                      | `SetNull`  | Same rationale, for API-key actors.                                                                         |
-| `OutboxEvent.organization` → `Organization`            | `Restrict` | Tenant-owned events keep their organization; platform events have a null `organizationId`.                  |
-| `InboxEvent.organization` → `Organization`             | `Restrict` | Same rationale as the outbox.                                                                               |
+| Relation                                               | On delete  | Why                                                                                                          |
+| ------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `OrganizationMembership.organization` → `Organization` | `Restrict` | An organization cannot be deleted while any membership references it — deactivate via `status` instead.      |
+| `OrganizationMembership.user` → `User`                 | `Cascade`  | A membership has no meaning once the user it refers to is gone.                                              |
+| `ApiKey.organization` → `Organization`                 | `Restrict` | Same rationale as above.                                                                                     |
+| `ApiKey.createdByUser` → `User`                        | `SetNull`  | An API key (active or revoked) must outlive the user who created it; only the creator reference is cleared.  |
+| `Session.user` → `User`                                | `Cascade`  | Sessions are ephemeral security state, not historical/audit records.                                         |
+| `Session.createdBySession` → `Session` (self)          | `SetNull`  | A rotation chain's earlier links may be pruned without invalidating the chain pointer of surviving rows.     |
+| `UserCredential.user` → `User`                         | `Cascade`  | A credential has no meaning once its user is gone; unlike `AuditLog`, this is not a historical record.       |
+| `AuditLog.organization` → `Organization`               | `Restrict` | Audit history is tied to a tenant that must exist.                                                           |
+| `AuditLog.actorUser` → `User`                          | `Restrict` | Audit rows keep the original actor id. Users are deactivated, not physically deleted, while evidence exists. |
+| `AuditLog.actorApiKey` → `ApiKey`                      | `Restrict` | Same rationale: revoke API keys rather than deleting rows that audit references.                             |
+| `OutboxEvent.organization` → `Organization`            | `Restrict` | Tenant-owned events keep their organization; platform events have a null `organizationId`.                   |
+| `InboxEvent.organization` → `Organization`             | `Restrict` | Same rationale as the outbox.                                                                                |
 
 No relation cascades into `AuditLog` or deletes `Organization`/`ApiKey`
 rows as a side effect of an unrelated deletion. Soft-delete fields were not
@@ -293,10 +297,15 @@ Indexes were added for known query shapes, not speculatively:
 - `Session`: `userId`, `expiresAt` (for expiry sweeps), `sessionFamilyId`
   (for family-wide revocation on reuse detection); `tokenHash` and
   `createdBySessionId` are unique constraints, already indexed.
-- `AuditLog`: `(organizationId, createdAt)` for the primary "this tenant's
-  recent activity" query, `(resourceType, resourceId)` for resource
-  lookup, `actorUserId`, `actorApiKeyId`, `requestId`, and `action` — one
-  index per way the audit log is expected to be queried.
+- `AuditLog`: tenant-scoped query shapes only —
+  `(organizationId, createdAt)` for newest-first reads,
+  `(organizationId, action, createdAt)`,
+  `(organizationId, resourceType, resourceId, createdAt)`,
+  `(organizationId, actorUserId, createdAt)`,
+  `(organizationId, actorApiKeyId, createdAt)`, and
+  `(organizationId, requestId)`. Unscoped actor/action/resource indexes
+  were replaced in `enforce_immutable_audit_logs` because every
+  legitimate read is organization-scoped.
 - `OutboxEvent`: `(status, availableAt)` for the claim queue,
   `(status, claimExpiresAt)` for expired-lease recovery, plus
   `organizationId`, `eventType`, `(aggregateType, aggregateId)`, and
@@ -325,6 +334,13 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
   non-empty event/source identity, `PROCESSED` requires `processedAt`,
   outbox `PROCESSING` requires claim fields, inbox `scopeKey` is either
   `'platform'` (null organization) or the organization UUID text.
+- Audit immutability in `enforce_immutable_audit_logs`:
+  `BEFORE UPDATE OR DELETE` (and `BEFORE TRUNCATE`) raises
+  `audit_logs is append-only`; CHECK constraints forbid both actor FKs,
+  empty `action`/`resource_type`, and non-object `metadata`; actor FKs
+  are `ON DELETE RESTRICT`. System actors (both FKs null) remain valid.
+  Privileged roles can still drop or disable the trigger — this is not
+  protection against a malicious PostgreSQL superuser.
 - `NOT NULL` / nullability exactly as declared in the schema.
 - Enum value membership (PostgreSQL enum types).
 - `ON DELETE`/`ON UPDATE` behavior described above.
@@ -336,10 +352,6 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
 - IANA timezone identifier validation for `Organization.timezone`.
 - API-key scope vocabulary — `ApiKey.scopes` accepts arbitrary strings at
   the database level.
-- "At least one valid actor category" for `AuditLog` — `actorUserId` and
-  `actorApiKeyId` are independently nullable and both may be null (for
-  system-generated events); the database does not require exactly one to
-  be set.
 - API-key expiry/revocation consistency (for example, that `revokedAt` and
   `status: REVOKED` agree).
 - Organization-owner business rules (for example, "an organization must
@@ -388,9 +400,12 @@ value by exact match.
   [`docs/architecture/authentication-and-access-control.md`](../../docs/architecture/authentication-and-access-control.md)
   for hashing parameters and the full authentication design.
 - **Audit logs:** `AuditLog.metadata` must never contain secrets,
-  plaintext credentials, session/API-key material, or raw card data —
-  this is an application-layer discipline this schema cannot enforce by
-  itself; treat it as a hard rule.
+  plaintext credentials, session/API-key material, or raw card data.
+  `AuditService` rejects forbidden keys/values so a surrounding
+  transaction rolls back. Privileged database roles can still disable
+  the append-only trigger — this is not protection against a malicious
+  superuser. See
+  [`docs/architecture/audit-logging.md`](../../docs/architecture/audit-logging.md).
 - **Outbox / inbox:** `OutboxEvent.payload` and `metadata` must never
   contain secrets, tokens, provider credentials, or card data. Inbox
   rows store only a SHA-256 payload hash, not the inbound body.

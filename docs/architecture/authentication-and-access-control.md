@@ -539,11 +539,12 @@ a human caller needs no scope, only a resolved organization membership.
 
 ## Audit logging
 
-`AuditService` (`apps/api/src/audit/audit.service.ts`) is append-only:
-every call is an `INSERT`, nothing is ever updated or deleted through this
-service. Every event requires an explicit `organizationId` — there is no
-"log without a tenant" path, matching `AuditLog.organizationId` being
-non-nullable in the schema.
+`AuditService.write` (`apps/api/src/audit/audit.service.ts`) is
+append-only: every call is an `INSERT`. PostgreSQL rejects `UPDATE` and
+`DELETE` on `audit_logs`. Every event requires an explicit
+`organizationId` — there is no "log without a tenant" path. Actors are
+`USER` / `API_KEY` / `SYSTEM`. See
+[`audit-logging.md`](./audit-logging.md).
 
 **Minimum action vocabulary this commit records** (`AUDIT_ACTIONS`,
 `apps/api/src/audit/audit.types.ts`): `auth.registered`,
@@ -551,14 +552,13 @@ non-nullable in the schema.
 `auth.all_sessions_revoked`, `auth.refresh_reuse_detected`,
 `api_key.created`, `api_key.revoked`.
 
-**Atomicity**: `AuditService.record()` accepts an optional Prisma
-transaction client. Every mutation that must be atomic with its audit
-record (registration; refresh rotation; API-key create/revoke) passes its
-own transaction's client through, so the mutation and its audit entry
-commit or roll back together — there is no separate "best-effort" audit
-write for these. When no client is passed, a write failure propagates as a
-normal rejected promise; nothing in this service catches and discards a
-failure.
+**Atomicity**: `AuditService.write(client, input)` always uses the
+supplied Prisma client or transaction. It never opens a nested
+transaction. Every mutation that must be atomic with its audit record
+(registration; refresh rotation; API-key create/revoke) passes that
+transaction's client through, so both commit or roll back together.
+Forbidden audit metadata rejects the write and therefore the
+transaction. Nothing in this service catches and discards a failure.
 
 **What is _not_ audited, and why**:
 
@@ -585,14 +585,13 @@ failure.
 
 **What must never appear in audit metadata**: passwords, password hashes,
 JWTs, refresh tokens, API-key secrets or hashes, cookies, or raw
-`Authorization`/`x-api-key` header values. This is an application-layer
-discipline `AuditService` cannot fully enforce by itself (`metadata` is a
-free-form JSON blob) — every call site in this codebase is written to pass
-only non-secret identifiers (e.g. `keyPrefix`, `environment`, `role`,
-counts), never raw credential material, and
-`test/auth.integration-spec.ts`'s "no plaintext secrets stored anywhere"
-test spot-checks this at the database level after a representative set of
-operations.
+`Authorization`/`x-api-key` header values. Callers construct only safe
+objects; `AuditService` then rejects forbidden keys or values so a
+surrounding transaction rolls back. Every call site in this codebase
+passes only non-secret identifiers (e.g. `keyPrefix`, `environment`,
+`role`, counts). `test/auth.integration-spec.ts` spot-checks persisted
+rows after a representative set of operations. See
+[`audit-logging.md`](./audit-logging.md).
 
 ## Token and key storage summary
 

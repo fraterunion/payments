@@ -41,6 +41,13 @@ more than once. The consumer durably claims identity
 Do not conflate the two. Publishing and inbound deduplication are
 different problems.
 
+Do not conflate either table with `AuditLog`. Audit answers who did what,
+where, and when. Outbox/inbox answer what another component may need to
+process. `AuditService` does not enqueue outbox events. The same
+transaction client can still write a domain mutation, an audit row, and
+an outbox event together. See
+[`audit-logging.md`](./audit-logging.md).
+
 ## Transactional outbox
 
 ```text

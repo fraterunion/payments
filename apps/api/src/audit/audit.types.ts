@@ -1,10 +1,11 @@
-import type { Prisma } from '@fraterunion-payments/database';
+import type { AuditLog } from '@fraterunion-payments/database';
+import type { RequestContext } from '../auth/types/request-context.type';
 
 /**
- * Minimum action vocabulary this commit's authentication flows must record
- * (see docs/architecture/authentication-and-access-control.md). Not an
- * exhaustive audit taxonomy — future domains add their own actions here as
- * they're implemented, not speculatively now.
+ * Action vocabulary currently recorded by authentication flows.
+ * Convention: `<domain>.<past-tense-action>`. Do not rename persisted
+ * values. Future domains add their own constants; `write` accepts any
+ * non-empty action string so this list is not a closed schema.
  */
 export const AUDIT_ACTIONS = {
   AUTH_REGISTERED: 'auth.registered',
@@ -17,7 +18,7 @@ export const AUDIT_ACTIONS = {
   API_KEY_REVOKED: 'api_key.revoked',
 } as const;
 
-export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
+export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});
 
 export const AUDIT_RESOURCE_TYPES = {
   ORGANIZATION: 'organization',
@@ -26,32 +27,60 @@ export const AUDIT_RESOURCE_TYPES = {
   API_KEY: 'api_key',
 } as const;
 
-export type AuditResourceType = (typeof AUDIT_RESOURCE_TYPES)[keyof typeof AUDIT_RESOURCE_TYPES];
+export type AuditResourceType =
+  (typeof AUDIT_RESOURCE_TYPES)[keyof typeof AUDIT_RESOURCE_TYPES] | (string & {});
 
-/**
- * Who performed the audited action. `system` covers events with no human or
- * API-key actor (none are recorded by this commit's flows, but the type
- * exists so future system-initiated events don't need a schema change).
- */
 export type AuditActor =
-  | { readonly type: 'user'; readonly userId: string }
-  | { readonly type: 'api_key'; readonly apiKeyId: string }
-  | { readonly type: 'system' };
+  | { readonly type: 'USER'; readonly userId: string }
+  | { readonly type: 'API_KEY'; readonly apiKeyId: string }
+  | { readonly type: 'SYSTEM' };
 
-export interface RecordAuditEventInput {
+export interface AuditResource {
+  readonly type: string;
+  readonly id?: string;
+}
+
+export interface WriteAuditInput {
   readonly organizationId: string;
   readonly actor: AuditActor;
-  readonly action: AuditAction;
-  readonly resourceType: AuditResourceType;
-  readonly resourceId?: string;
-  readonly requestId?: string;
-  readonly ipAddress?: string;
-  readonly userAgent?: string;
+  readonly action: string;
+  readonly resource: AuditResource;
+  readonly requestContext?: RequestContext;
   /**
-   * Structured detail only. Must never contain secrets, plaintext
-   * credentials, session/API-key material, or raw card data — this is an
-   * application-layer discipline `AuditService` cannot fully enforce, but
-   * every call site in this codebase is reviewed against that rule.
+   * Structured detail only. Must be a JSON object. Forbidden secret keys
+   * or values cause the write to be rejected so a surrounding transaction
+   * rolls back.
    */
-  readonly metadata?: Prisma.InputJsonValue;
+  readonly metadata?: Record<string, unknown>;
 }
+
+export const AUDIT_LIST_DEFAULT_LIMIT = 50;
+export const AUDIT_LIST_MAX_LIMIT = 100;
+
+export interface AuditListCursor {
+  readonly createdAt: Date;
+  readonly id: string;
+}
+
+export interface AuditListQuery {
+  readonly organizationId: string;
+  readonly action?: string;
+  readonly resourceType?: string;
+  readonly resourceId?: string;
+  readonly actorUserId?: string;
+  readonly actorApiKeyId?: string;
+  readonly requestId?: string;
+  readonly createdAtFrom?: Date;
+  readonly createdAtTo?: Date;
+  readonly limit?: number;
+  readonly cursor?: AuditListCursor;
+}
+
+export interface AuditListResult {
+  readonly items: readonly AuditLog[];
+  readonly nextCursor: AuditListCursor | undefined;
+}
+
+export const AUDIT_METADATA_MAX_BYTES = 16_384;
+export const AUDIT_METADATA_MAX_DEPTH = 8;
+export const AUDIT_USER_AGENT_MAX_LENGTH = 512;

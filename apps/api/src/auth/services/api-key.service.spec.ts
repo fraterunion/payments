@@ -40,8 +40,8 @@ function createFakeLogger(): PinoLogger {
 function createService(db: ReturnType<typeof createFakeDb>) {
   const databaseService: Pick<DatabaseService, 'getClient'> = { getClient: () => db };
   const appConfig: Pick<AppConfigService, 'apiKeyHashSecret'> = { apiKeyHashSecret: PEPPER };
-  const auditService: Pick<AuditService, 'record'> = {
-    record: jest.fn().mockResolvedValue(undefined),
+  const auditService: Pick<AuditService, 'write'> = {
+    write: jest.fn().mockResolvedValue({}),
   };
 
   const service = new ApiKeyService(
@@ -76,7 +76,7 @@ describe('ApiKeyService', () => {
           scopes: ['organizations:read'],
           createdByUserId: 'user-1',
         },
-        { type: 'user', userId: 'user-1' },
+        { type: 'USER', userId: 'user-1' },
         {},
       );
 
@@ -92,9 +92,9 @@ describe('ApiKeyService', () => {
       });
       const createdData = db.apiKey.create.mock.calls[0][0].data;
       expect(createdData.secretHash).not.toContain(result.plaintextKey);
-      expect(auditService.record).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'api_key.created' }),
+      expect(auditService.write).toHaveBeenCalledWith(
         db,
+        expect.objectContaining({ action: 'api_key.created' }),
       );
     });
 
@@ -113,7 +113,7 @@ describe('ApiKeyService', () => {
           scopes: [],
           createdByUserId: 'user-1',
         },
-        { type: 'user', userId: 'user-1' },
+        { type: 'USER', userId: 'user-1' },
         {},
       );
 
@@ -135,7 +135,7 @@ describe('ApiKeyService', () => {
             scopes: [],
             createdByUserId: 'user-1',
           },
-          { type: 'user', userId: 'user-1' },
+          { type: 'USER', userId: 'user-1' },
           {},
         ),
       ).rejects.toThrow();
@@ -155,7 +155,7 @@ describe('ApiKeyService', () => {
             scopes: [],
             createdByUserId: 'user-1',
           },
-          { type: 'user', userId: 'user-1' },
+          { type: 'USER', userId: 'user-1' },
           {},
         ),
       ).rejects.toThrow('unexpected db error');
@@ -169,13 +169,13 @@ describe('ApiKeyService', () => {
       db.apiKey.updateMany.mockResolvedValue({ count: 0 });
       const { service, auditService } = createService(db);
 
-      await service.revoke('key-1', 'org-1', { type: 'user', userId: 'user-1' }, {});
+      await service.revoke('key-1', 'org-1', { type: 'USER', userId: 'user-1' }, {});
 
       expect(db.apiKey.updateMany).toHaveBeenCalledWith({
         where: { id: 'key-1', organizationId: 'org-1', status: 'ACTIVE' },
         data: { status: 'REVOKED', revokedAt: expect.any(Date) },
       });
-      expect(auditService.record).not.toHaveBeenCalled();
+      expect(auditService.write).not.toHaveBeenCalled();
     });
 
     it('audits a real revocation', async () => {
@@ -183,9 +183,10 @@ describe('ApiKeyService', () => {
       db.apiKey.updateMany.mockResolvedValue({ count: 1 });
       const { service, auditService } = createService(db);
 
-      await service.revoke('key-1', 'org-1', { type: 'user', userId: 'user-1' }, {});
+      await service.revoke('key-1', 'org-1', { type: 'USER', userId: 'user-1' }, {});
 
-      expect(auditService.record).toHaveBeenCalledWith(
+      expect(auditService.write).toHaveBeenCalledWith(
+        db,
         expect.objectContaining({ action: 'api_key.revoked' }),
       );
     });

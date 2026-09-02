@@ -74,25 +74,19 @@ export class ApiKeyService {
             },
           });
 
-          await this.auditService.record(
-            {
-              organizationId: input.organizationId,
-              actor,
-              action: AUDIT_ACTIONS.API_KEY_CREATED,
-              resourceType: AUDIT_RESOURCE_TYPES.API_KEY,
-              resourceId: created.id,
-              metadata: {
-                name: input.name,
-                environment: input.environment,
-                scopes: [...input.scopes],
-                keyPrefix: generated.prefix,
-              },
-              ...(context.requestId !== undefined ? { requestId: context.requestId } : {}),
-              ...(context.ipAddress !== undefined ? { ipAddress: context.ipAddress } : {}),
-              ...(context.userAgent !== undefined ? { userAgent: context.userAgent } : {}),
+          await this.auditService.write(tx, {
+            organizationId: input.organizationId,
+            actor,
+            action: AUDIT_ACTIONS.API_KEY_CREATED,
+            resource: { type: AUDIT_RESOURCE_TYPES.API_KEY, id: created.id },
+            requestContext: context,
+            metadata: {
+              name: input.name,
+              environment: input.environment,
+              scopes: [...input.scopes],
+              keyPrefix: generated.prefix,
             },
-            tx,
-          );
+          });
 
           return created;
         });
@@ -142,15 +136,12 @@ export class ApiKeyService {
 
     if (result.count === 0) return;
 
-    await this.auditService.record({
+    await this.auditService.write(db, {
       organizationId,
       actor,
       action: AUDIT_ACTIONS.API_KEY_REVOKED,
-      resourceType: AUDIT_RESOURCE_TYPES.API_KEY,
-      resourceId: id,
-      ...(context.requestId !== undefined ? { requestId: context.requestId } : {}),
-      ...(context.ipAddress !== undefined ? { ipAddress: context.ipAddress } : {}),
-      ...(context.userAgent !== undefined ? { userAgent: context.userAgent } : {}),
+      resource: { type: AUDIT_RESOURCE_TYPES.API_KEY, id },
+      requestContext: context,
     });
   }
 

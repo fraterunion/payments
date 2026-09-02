@@ -40,8 +40,8 @@ function createService(
 ) {
   const databaseService: Pick<DatabaseService, 'getClient'> = { getClient: () => db };
   const appConfig: Pick<AppConfigService, 'sessionTtlSeconds'> = { sessionTtlSeconds: 2_592_000 };
-  const auditService: Pick<AuditService, 'record'> = {
-    record: jest.fn().mockResolvedValue(undefined),
+  const auditService: Pick<AuditService, 'write'> = {
+    write: jest.fn().mockResolvedValue({}),
   };
   const memberships: Pick<OrganizationMembershipService, 'findSoleMembership'> = {
     findSoleMembership: jest
@@ -125,7 +125,8 @@ describe('SessionService', () => {
         where: { sessionFamilyId: 'family-1', revokedAt: null },
         data: { revokedAt: NOW },
       });
-      expect(auditService.record).toHaveBeenCalledWith(
+      expect(auditService.write).toHaveBeenCalledWith(
+        db,
         expect.objectContaining({ action: 'auth.refresh_reuse_detected' }),
       );
       expect(db.$transaction).not.toHaveBeenCalled();
@@ -194,9 +195,9 @@ describe('SessionService', () => {
           expiresAt: FUTURE,
         }),
       });
-      expect(auditService.record).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'auth.session_refreshed', organizationId: 'org-1' }),
+      expect(auditService.write).toHaveBeenCalledWith(
         db,
+        expect.objectContaining({ action: 'auth.session_refreshed', organizationId: 'org-1' }),
       );
       expect(result.session.id).toBe('session-2');
       expect(result.refreshToken).toEqual(expect.any(String));
@@ -220,7 +221,8 @@ describe('SessionService', () => {
       await expect(service.rotateSession('raced-token', {})).rejects.toThrow(UnauthorizedException);
 
       expect(db.session.create).not.toHaveBeenCalled();
-      expect(auditService.record).toHaveBeenCalledWith(
+      expect(auditService.write).toHaveBeenCalledWith(
+        db,
         expect.objectContaining({
           action: 'auth.refresh_reuse_detected',
           metadata: expect.objectContaining({ reason: 'concurrent_rotation' }),
@@ -244,7 +246,7 @@ describe('SessionService', () => {
 
       await service.rotateSession('valid-refresh-token', {});
 
-      expect(auditService.record).not.toHaveBeenCalled();
+      expect(auditService.write).not.toHaveBeenCalled();
     });
   });
 
@@ -255,9 +257,9 @@ describe('SessionService', () => {
       db.session.updateMany.mockResolvedValue({ count: 0 });
       const { service, auditService } = createService(db, { soleOrganizationId: 'org-1' });
 
-      await service.revokeSession('session-1', { type: 'user', userId: 'user-1' }, {});
+      await service.revokeSession('session-1', { type: 'USER', userId: 'user-1' }, {});
 
-      expect(auditService.record).not.toHaveBeenCalled();
+      expect(auditService.write).not.toHaveBeenCalled();
     });
 
     it('audits a real revocation', async () => {
@@ -266,10 +268,14 @@ describe('SessionService', () => {
       db.session.updateMany.mockResolvedValue({ count: 1 });
       const { service, auditService } = createService(db, { soleOrganizationId: 'org-1' });
 
-      await service.revokeSession('session-1', { type: 'user', userId: 'user-1' }, {});
+      await service.revokeSession('session-1', { type: 'USER', userId: 'user-1' }, {});
 
-      expect(auditService.record).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'auth.session_revoked', resourceId: 'session-1' }),
+      expect(auditService.write).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          action: 'auth.session_revoked',
+          resource: { type: 'session', id: 'session-1' },
+        }),
       );
     });
 
@@ -279,7 +285,7 @@ describe('SessionService', () => {
       const { service } = createService(db);
 
       await expect(
-        service.revokeSession('missing', { type: 'user', userId: 'user-1' }, {}),
+        service.revokeSession('missing', { type: 'USER', userId: 'user-1' }, {}),
       ).resolves.toBeUndefined();
       expect(db.session.updateMany).not.toHaveBeenCalled();
     });
@@ -291,9 +297,10 @@ describe('SessionService', () => {
       db.session.updateMany.mockResolvedValue({ count: 3 });
       const { service, auditService } = createService(db, { soleOrganizationId: 'org-1' });
 
-      await service.revokeAllSessions('user-1', { type: 'user', userId: 'user-1' }, {});
+      await service.revokeAllSessions('user-1', { type: 'USER', userId: 'user-1' }, {});
 
-      expect(auditService.record).toHaveBeenCalledWith(
+      expect(auditService.write).toHaveBeenCalledWith(
+        db,
         expect.objectContaining({
           action: 'auth.all_sessions_revoked',
           metadata: { revokedCount: 3 },
@@ -306,9 +313,9 @@ describe('SessionService', () => {
       db.session.updateMany.mockResolvedValue({ count: 0 });
       const { service, auditService } = createService(db, { soleOrganizationId: 'org-1' });
 
-      await service.revokeAllSessions('user-1', { type: 'user', userId: 'user-1' }, {});
+      await service.revokeAllSessions('user-1', { type: 'USER', userId: 'user-1' }, {});
 
-      expect(auditService.record).not.toHaveBeenCalled();
+      expect(auditService.write).not.toHaveBeenCalled();
     });
   });
 

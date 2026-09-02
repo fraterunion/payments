@@ -133,20 +133,14 @@ export class AuthService {
           tx,
         );
 
-        await this.auditService.record(
-          {
-            organizationId: organization.id,
-            actor: { type: 'user', userId: user.id },
-            action: AUDIT_ACTIONS.AUTH_REGISTERED,
-            resourceType: AUDIT_RESOURCE_TYPES.USER,
-            resourceId: user.id,
-            metadata: { organizationSlug: organization.slug, role: 'OWNER' },
-            ...(context.requestId !== undefined ? { requestId: context.requestId } : {}),
-            ...(context.ipAddress !== undefined ? { ipAddress: context.ipAddress } : {}),
-            ...(context.userAgent !== undefined ? { userAgent: context.userAgent } : {}),
-          },
-          tx,
-        );
+        await this.auditService.write(tx, {
+          organizationId: organization.id,
+          actor: { type: 'USER', userId: user.id },
+          action: AUDIT_ACTIONS.AUTH_REGISTERED,
+          resource: { type: AUDIT_RESOURCE_TYPES.USER, id: user.id },
+          requestContext: context,
+          metadata: { organizationSlug: organization.slug, role: 'OWNER' },
+        });
 
         return { user, organization, session, refreshToken };
       })
@@ -210,15 +204,12 @@ export class AuthService {
 
     const organizationId = await this.resolveAuditOrganizationId(user.id);
     if (organizationId !== undefined) {
-      await this.auditService.record({
+      await this.auditService.write(this.databaseService.getClient(), {
         organizationId,
-        actor: { type: 'user', userId: user.id },
+        actor: { type: 'USER', userId: user.id },
         action: AUDIT_ACTIONS.AUTH_LOGIN_SUCCEEDED,
-        resourceType: AUDIT_RESOURCE_TYPES.USER,
-        resourceId: user.id,
-        ...(context.requestId !== undefined ? { requestId: context.requestId } : {}),
-        ...(context.ipAddress !== undefined ? { ipAddress: context.ipAddress } : {}),
-        ...(context.userAgent !== undefined ? { userAgent: context.userAgent } : {}),
+        resource: { type: AUDIT_RESOURCE_TYPES.USER, id: user.id },
+        requestContext: context,
       });
     }
 
@@ -250,7 +241,7 @@ export class AuthService {
   async logout(principal: UserPrincipal, context: RequestContext): Promise<void> {
     await this.sessionService.revokeSession(
       principal.sessionId,
-      { type: 'user', userId: principal.userId },
+      { type: 'USER', userId: principal.userId },
       context,
     );
   }
@@ -258,7 +249,7 @@ export class AuthService {
   async logoutAll(principal: UserPrincipal, context: RequestContext): Promise<void> {
     await this.sessionService.revokeAllSessions(
       principal.userId,
-      { type: 'user', userId: principal.userId },
+      { type: 'USER', userId: principal.userId },
       context,
     );
   }

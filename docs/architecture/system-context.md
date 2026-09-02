@@ -3,12 +3,12 @@
 ## Status
 
 Authoritative. Describes the intended system context and deployment model
-for FraterUnion Payments. The monorepo currently implements tenancy, authentication, and the
-outbox/inbox substrate (see the root [`README.md`](../../README.md));
-this document still defines the broader target shape later commits
-build toward.
+for FraterUnion Payments. The monorepo currently implements tenancy,
+authentication, immutable tenant audit logging, and the outbox/inbox
+substrate (see the root [`README.md`](../../README.md)); this document
+still defines the broader target shape later commits build toward.
 
-Last updated: 2026-08-06
+Last updated: 2026-09-02
 
 ## Actors and systems
 

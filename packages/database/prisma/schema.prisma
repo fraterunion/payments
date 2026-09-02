@@ -351,19 +351,20 @@ model Session {
   @@map("sessions")
 }
 
-/// Append-oriented record of privileged and security-relevant actions.
-/// Deliberately has no `updatedAt`: audit records are not edited.
+/// Append-only record of privileged and security-relevant actions.
+/// Deliberately has no `updatedAt`: committed rows are never edited.
 ///
-/// `actorUserId` and `actorApiKeyId` are independently nullable — some
-/// events are system-generated and have neither. This commit does not
-/// enforce "exactly one actor" at the database level, since doing so would
-/// either block legitimate system actors or require a check constraint
-/// interacting awkwardly with nullable foreign keys; see README.
+/// PostgreSQL enforces immutability (BEFORE UPDATE OR DELETE trigger) and
+/// forbids both actor FKs from being set at once. System actors have
+/// neither FK. Actor FKs use `Restrict` so physical user/API-key deletion
+/// cannot SET NULL an immutable row — deactivate or revoke instead.
 ///
-/// Deletion policy: the organization relation blocks deletion (`Restrict`).
-/// The actor relations use `SetNull` so that deleting or deactivating a user
-/// or API key can never delete audit history — only the actor reference is
-/// cleared, the event itself remains.
+/// Prisma cannot express the trigger or CHECK constraints; those live in
+/// the `enforce_immutable_audit_logs` migration SQL.
+///
+/// `organizationId` remains required: tenant audit stays tenant-bound.
+/// Platform-wide rows are not represented here (failed logins stay
+/// unaudited for that reason). See docs/architecture/audit-logging.md.
 model AuditLog {
   id             String @id @default(uuid(7)) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -371,9 +372,9 @@ model AuditLog {
   actorUserId   String? @map("actor_user_id") @db.Uuid
   actorApiKeyId String? @map("actor_api_key_id") @db.Uuid
 
-  /// Extensible action identifier (for example, "payment.refunded").
+  /// Extensible action identifier (for example, "auth.registered").
   action       String  @db.VarChar(128)
-  /// Extensible resource type identifier (for example, "payment").
+  /// Extensible resource type identifier (for example, "user").
   resourceType String  @map("resource_type") @db.VarChar(128)
   resourceId   String? @map("resource_id") @db.VarChar(128)
 
@@ -381,22 +382,22 @@ model AuditLog {
   ipAddress String? @map("ip_address") @db.Inet
   userAgent String? @map("user_agent") @db.VarChar(512)
 
-  /// Structured event detail. Must never contain secrets, plaintext
-  /// credentials, session/API-key material, or raw card data (ADR-005).
+  /// Structured event detail. Must be a JSON object. Must never contain
+  /// secrets, credentials, tokens, or card data (ADR-005).
   metadata Json @default("{}")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  actorUser    User?        @relation("AuditLogActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
-  actorApiKey  ApiKey?      @relation("AuditLogActorApiKey", fields: [actorApiKeyId], references: [id], onDelete: SetNull)
+  actorUser    User?        @relation("AuditLogActorUser", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorApiKey  ApiKey?      @relation("AuditLogActorApiKey", fields: [actorApiKeyId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, createdAt])
-  @@index([resourceType, resourceId])
-  @@index([actorUserId])
-  @@index([actorApiKeyId])
-  @@index([requestId])
-  @@index([action])
+  @@index([organizationId, action, createdAt])
+  @@index([organizationId, resourceType, resourceId, createdAt])
+  @@index([organizationId, actorUserId, createdAt])
+  @@index([organizationId, actorApiKeyId, createdAt])
+  @@index([organizationId, requestId])
   @@map("audit_logs")
 }
 
