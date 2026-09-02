@@ -49,9 +49,15 @@ still transition due to subsequent refund activity, as shown below.
 | ------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------ |
 | `CREATED`                 | `REQUIRES_PAYMENT_METHOD` | Payment created without a usable payment method.                                                 |
 | `CREATED`                 | `AUTHORIZING`             | Payment created with a usable payment method; authorization requested.                           |
+| `CREATED`                 | `CANCELED`                | Payment voided before provider execution progressed.                                             |
 | `REQUIRES_PAYMENT_METHOD` | `AUTHORIZING`             | A payment method is attached and authorization is requested.                                     |
+| `REQUIRES_PAYMENT_METHOD` | `CANCELED`                | Payment voided while waiting for a method.                                                       |
+| `AUTHORIZING`             | `REQUIRES_PAYMENT_METHOD` | Provider asks for another payment method on the same execution (not terminal FAILED).            |
 | `AUTHORIZING`             | `REQUIRES_ACTION`         | Provider response indicates additional customer action is required.                              |
+| `AUTHORIZING`             | `CANCELED`                | Authorization voided while in flight.                                                            |
 | `REQUIRES_ACTION`         | `AUTHORIZING`             | Customer completes the required action; authorization is retried/continued.                      |
+| `REQUIRES_ACTION`         | `REQUIRES_PAYMENT_METHOD` | Provider asks for another payment method after customer action.                                  |
+| `REQUIRES_ACTION`         | `CANCELED`                | Payment voided while waiting for customer action.                                                |
 | `REQUIRES_ACTION`         | `FAILED`                  | Required action is not completed before expiration.                                              |
 | `AUTHORIZING`             | `AUTHORIZED`              | Provider confirms authorization succeeded (manual-capture flow).                                 |
 | `AUTHORIZING`             | `CAPTURING`               | Provider confirms authorization succeeded and automatic capture proceeds immediately.            |
@@ -77,9 +83,15 @@ stateDiagram-v2
     [*] --> CREATED
     CREATED --> REQUIRES_PAYMENT_METHOD: no usable payment method
     CREATED --> AUTHORIZING: payment method attached
+    CREATED --> CANCELED: voided
     REQUIRES_PAYMENT_METHOD --> AUTHORIZING: payment method attached
+    REQUIRES_PAYMENT_METHOD --> CANCELED: voided
+    AUTHORIZING --> REQUIRES_PAYMENT_METHOD: another method required
     AUTHORIZING --> REQUIRES_ACTION: provider requires customer action
+    AUTHORIZING --> CANCELED: voided
     REQUIRES_ACTION --> AUTHORIZING: action completed
+    REQUIRES_ACTION --> REQUIRES_PAYMENT_METHOD: another method required
+    REQUIRES_ACTION --> CANCELED: voided
     REQUIRES_ACTION --> FAILED: action not completed or expired
     AUTHORIZING --> AUTHORIZED: authorization succeeds (manual capture)
     AUTHORIZING --> CAPTURING: authorization succeeds (automatic capture)

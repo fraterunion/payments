@@ -273,8 +273,16 @@ Hashing uses SHA-256 over a small canonical JSON serializer:
 
 `RECEIVED` → `PROCESSING` → `PROCESSED`, or `FAILED` after a terminal
 error / exhausted retries. A retryable inbox failure returns the row to
-`RECEIVED`. `beginProcessing` only accepts `RECEIVED` rows; a
-`PROCESSED` row cannot start logical processing again.
+`RECEIVED` with `availableAt` backoff. `UNRESOLVED_EXTERNAL_REFERENCE`
+(missing provider execution) is retryable, not terminal. `beginProcessing`
+and `claimBatch` only take eligible `RECEIVED` rows (or expired
+`PROCESSING` leases). A `PROCESSED` row cannot start logical processing
+again.
+
+Claim fields (`claimedAt`, `claimExpiresAt`, `claimedBy`, `availableAt`,
+`processingOutcome`) support `FOR UPDATE SKIP LOCKED` leasing. Stripe
+financial application, audit, and `PROCESSED` commit in one transaction.
+See [`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md).
 
 ## Transaction composition
 
@@ -297,18 +305,20 @@ second transaction. Rollback leaves none of those writes committed.
 `apps/worker` polls PostgreSQL. It does not use Redis, BullMQ, Kafka, or
 SQS.
 
-Lifecycle: validate environment → connect → unique worker ID → poll →
-claim a bounded batch → dispatch registered handlers (bounded
-concurrency) → mark success/retry/failure → recover expired claims on the
-same claim path → sleep → on SIGTERM/SIGINT stop claiming, wait for
-in-flight work up to `WORKER_SHUTDOWN_TIMEOUT_MS`, disconnect, exit.
+The process runs two pollers:
 
-Unfinished work is **not** marked successful. Abandoned `PROCESSING` rows
-become reclaimable when the lease expires.
+- `OutboxWorker` — existing outbound events (empty production registry)
+- `InboxWorker` — `source='stripe'` financial normalization only
 
-Unknown event types are terminal. Production starts with an empty handler
-registry; domain handlers are registered by later commits. Test-only
-handlers use the `events.test.*` prefix.
+Unknown Stripe event types are processed as ignored no-ops, not
+dead-lettered. Inbox processing does not go through the outbox handler
+registry.
+
+Lifecycle: validate environment → connect → unique worker ID → poll both
+queues → claim bounded batches → dispatch → mark success/retry/failure →
+recover expired claims → sleep → on SIGTERM/SIGINT stop both workers,
+wait for in-flight work up to `WORKER_SHUTDOWN_TIMEOUT_MS`, disconnect,
+exit.
 
 Tick results are structured (`claimed`, `processed`, `retried`,
 `failed`, `reclaimed`) so future metrics can count them. This commit does

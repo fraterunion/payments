@@ -34,6 +34,8 @@ export type {
   CustomerProviderMapping,
   Payment,
   Refund,
+  PaymentProviderExecution,
+  RefundProviderExecution,
   IdempotencyRecord,
   ProviderAccountConnection,
 } from '../generated/client/index.js';

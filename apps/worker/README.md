@@ -1,21 +1,28 @@
 # @fraterunion-payments/worker
 
-Standalone Node.js process that polls the transactional outbox in
-PostgreSQL. It is not a Redis, BullMQ, Kafka, or SQS worker. See
+Standalone Node.js process that polls PostgreSQL for the transactional
+outbox **and** Stripe inbox events. It is not a Redis, BullMQ, Kafka, or
+SQS worker. See
 [`docs/architecture/event-delivery.md`](../../docs/architecture/event-delivery.md)
 and [ADR-007](../../docs/decisions/ADR-007-transactional-outbox-and-inbox.md).
 
-This commit is infrastructure only. Production starts with an **empty**
-handler registry. Domain payment handlers are not registered here.
+Outbox production still starts with an **empty** handler registry.
+InboxWorker claims `source=stripe` only and runs
+`processStripeInboxEvent`. Ignored Stripe types become processed no-ops.
+Financial mutation, audit, and Inbox `PROCESSED` commit in one
+transaction. See
+[`docs/architecture/stripe-webhook-normalization.md`](../../docs/architecture/stripe-webhook-normalization.md).
 
 ## Lifecycle
 
 1. Validate environment.
 2. Connect to PostgreSQL and run `SELECT 1`.
 3. Generate a unique worker ID.
-4. Poll for eligible outbox rows.
+4. Poll for eligible outbox **and** Stripe inbox rows.
 5. Claim a bounded batch with `FOR UPDATE SKIP LOCKED`.
-6. Dispatch each claimed event to the registered handler.
+6. Dispatch each claimed outbox event to the registered handler, or
+   process each claimed Stripe inbox event through the financial
+   normalizer (no second PROCESSED mark on success).
 7. Mark processed, schedule a retry, or mark `FAILED`.
 8. Expired `PROCESSING` leases are reclaimable on the same claim path.
 9. Sleep `WORKER_POLL_INTERVAL_MS` when idle (no empty-queue info logs).

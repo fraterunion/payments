@@ -58,6 +58,14 @@ export async function cleanupOrganizations(
   }
   await db.outboxEvent.deleteMany({ where: { organizationId: { in: [...organizationIds] } } });
   await db.inboxEvent.deleteMany({ where: { organizationId: { in: [...organizationIds] } } });
+  await db.refundProviderExecution.deleteMany({
+    where: { organizationId: { in: [...organizationIds] } },
+  });
+  await db.paymentProviderExecution.deleteMany({
+    where: { organizationId: { in: [...organizationIds] } },
+  });
+  await db.refund.deleteMany({ where: { organizationId: { in: [...organizationIds] } } });
+  await db.payment.deleteMany({ where: { organizationId: { in: [...organizationIds] } } });
   await db.providerAccountConnection.deleteMany({
     where: { organizationId: { in: [...organizationIds] } },
   });

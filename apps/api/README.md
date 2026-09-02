@@ -12,8 +12,9 @@ control, tenant-safe customers, canonical payment/refund create/get/list
 (internal lifecycle only; public APIs still do not execute on Stripe),
 Stripe connected-account onboarding behind canonical provider-connection
 resources, and durable Stripe webhook ingestion (signature verify → inbox
-receipt only; no payment-domain normalization yet). Billing remains out of
-scope. See
+receipt) plus asynchronous Stripe inbox normalization into canonical
+Payment/Refund state. Public create/get/list still do not execute on
+Stripe. Billing remains out of scope. See
 [ADR-001](../../docs/decisions/ADR-001-nestjs-nextjs-and-typescript.md) for
 why NestJS was chosen,
 [`../../docs/architecture/security-boundaries.md`](../../docs/architecture/security-boundaries.md)
@@ -49,9 +50,10 @@ src/
 ├── audit/                       AuditService.write/list — append-only, tenant-scoped (not global; no public CRUD)
 ├── idempotency/                  Financial-command idempotency (no public HTTP)
 ├── customers/                    Customer CRUD/archive, provider-mapping service (create is service-only)
-├── payments/                     Canonical payment create/get/list; internal lifecycle; create idempotency
+├── payments/                     Canonical payment create/get/list; internal lifecycle; provider execution create (no public HTTP)
+├── refunds/                      Canonical refund create/get/list; provider execution create (no public HTTP)
 ├── provider-connections/         Canonical Stripe Connect onboarding; human OWNER/ADMIN create
-├── webhooks/                     POST /webhooks/stripe — signature verify + InboxEvent receipt
+├── webhooks/                     POST /webhooks/stripe — signature verify + InboxEvent receipt; StripeInboxProcessorService
 ├── auth/                         see below and
 │   │                             ../../docs/architecture/authentication-and-access-control.md
 │   ├── auth.module.ts

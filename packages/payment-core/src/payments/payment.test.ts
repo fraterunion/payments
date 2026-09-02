@@ -27,6 +27,7 @@ import {
   remainingCapturableAmount,
   requireCustomerAction,
   resumeAuthorization,
+  returnToRequiresPaymentMethod,
   type Payment,
 } from './payment.js';
 import { createPaymentMethodReference } from './payment-method.js';
@@ -140,6 +141,16 @@ describe('payment aggregate', () => {
     expect(() => applyCapture(beginCapture(authorized()), createMoney(10001n, 'USD'))).toThrow(
       /remaining authorized/,
     );
+  });
+
+  it('returns AUTHORIZING/REQUIRES_ACTION to REQUIRES_PAYMENT_METHOD without failing', () => {
+    const authorizing = beginAuthorization(newPayment());
+    expect(returnToRequiresPaymentMethod(authorizing).status).toBe('REQUIRES_PAYMENT_METHOD');
+    expect(returnToRequiresPaymentMethod(requireCustomerAction(authorizing)).status).toBe(
+      'REQUIRES_PAYMENT_METHOD',
+    );
+    expect(canCancelPayment(newPayment())).toBe(true);
+    expect(canCancelPayment(authorizing)).toBe(true);
   });
 
   it('cancels AUTHORIZED payments and fails AUTHORIZING/CAPTURING', () => {

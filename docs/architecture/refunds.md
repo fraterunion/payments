@@ -29,11 +29,14 @@ internal lifecycle transition (PROCESSING / SUCCEEDED / FAILED)
 ```
 
 A persisted `Refund` is a FraterUnion Payments object. It is not a Stripe
-Refund or any other provider-native object. Provider IDs are not stored
-on the refund row. A later execution/mapping model can attach provider
-attempts without assuming one refund equals one provider object forever.
+Refund or any other provider-native object. Provider IDs are stored on
+`RefundProviderExecution`, not on the refund row. See
+[`provider-payment-executions.md`](./provider-payment-executions.md).
+Verified Stripe refund events may mutate canonical Refund (and parent
+Payment `refundedAmount`) through refund-core; see
+[`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md).
 
-This commit does **not** call any provider contract method.
+Public refund create still does **not** call any provider contract method.
 
 `CREATED` means FraterUnion accepted a refund request and reserved
 capacity. It does **not** mean money was refunded externally.

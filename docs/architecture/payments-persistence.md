@@ -31,12 +31,15 @@ internal lifecycle transition
 A persisted `Payment` is a FraterUnion Payments object. It is not a
 Stripe PaymentIntent, an Adyen payment, or a Moneris transaction.
 Provider IDs and provider-specific statuses are not stored on the payment
-row. A later `PaymentProviderExecution` (or similar) mapping can attach
-provider attempts without assuming one payment equals one provider object
-forever.
-
-This commit does **not** call `PaymentProvider.createPayment()` or any
-other provider contract method.
+row. `PaymentProviderExecution` attaches opaque provider payment objects
+(`pi_…` for Stripe) without assuming one payment equals one provider
+object forever. See
+[`provider-payment-executions.md`](./provider-payment-executions.md).
+Verified Stripe inbox events may mutate canonical Payment state through
+payment-core observation application; see
+[`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md).
+Public `POST /payments` still does **not** call
+`PaymentProvider.createPayment()` or any other provider contract method.
 
 ## Architecture
 

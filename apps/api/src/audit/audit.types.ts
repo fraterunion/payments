@@ -36,6 +36,8 @@ export const AUDIT_ACTIONS = {
   REFUND_PROCESSING_STARTED: 'refund.processing_started',
   REFUND_SUCCEEDED: 'refund.succeeded',
   REFUND_FAILED: 'refund.failed',
+  PAYMENT_PROVIDER_EXECUTION_CREATED: 'payment.provider_execution_created',
+  REFUND_PROVIDER_EXECUTION_CREATED: 'refund.provider_execution_created',
   PROVIDER_CONNECTION_CREATED: 'provider_connection.created',
   PROVIDER_CONNECTION_ONBOARDING_LINK_CREATED: 'provider_connection.onboarding_link_created',
   PROVIDER_CONNECTION_REFRESHED: 'provider_connection.refreshed',
@@ -53,6 +55,8 @@ export const AUDIT_RESOURCE_TYPES = {
   CUSTOMER_PROVIDER_MAPPING: 'customer_provider_mapping',
   PAYMENT: 'payment',
   REFUND: 'refund',
+  PAYMENT_PROVIDER_EXECUTION: 'payment_provider_execution',
+  REFUND_PROVIDER_EXECUTION: 'refund_provider_execution',
   PROVIDER_ACCOUNT_CONNECTION: 'provider_account_connection',
 } as const;
 

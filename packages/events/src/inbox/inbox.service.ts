@@ -1,15 +1,19 @@
-import type { InboxEvent } from '@fraterunion-payments/database';
+import type { InboxEvent, PrismaClient } from '@fraterunion-payments/database';
 import { Prisma } from '@fraterunion-payments/database';
 import { errorCodeOf, isRetryableFailure, TerminalEventError } from '../errors.js';
 import { hashPayload } from '../hash/payload-hash.js';
+import { computeRetryDelayMs } from '../retry/backoff.js';
 import { sanitizeErrorMessage } from '../sanitize/error-sanitize.js';
 import {
+  DEFAULT_CLAIM_LEASE_MS,
   isGloballyUniqueInboxSource,
   PLATFORM_SCOPE_KEY,
   type EventWriteClient,
 } from '../types.js';
 import type {
+  InboxClaimBatchOptions,
   InboxOrganizationAssignResult,
+  InboxProcessingOutcome,
   InboxReceiveResult,
   InboxRetryOptions,
   ReceiveInboxInput,
@@ -119,12 +123,17 @@ export class InboxService {
     client: EventWriteClient,
     eventId: string,
     now = new Date(),
+    claimedBy = 'begin-processing',
+    claimLeaseMs = DEFAULT_CLAIM_LEASE_MS,
   ): Promise<InboxEvent> {
     const updated = await client.inboxEvent.updateMany({
       where: { id: eventId, status: 'RECEIVED' },
       data: {
         status: 'PROCESSING',
         processingStartedAt: now,
+        claimedAt: now,
+        claimExpiresAt: new Date(now.getTime() + claimLeaseMs),
+        claimedBy,
       },
     });
     if (updated.count === 1) {
@@ -141,18 +150,102 @@ export class InboxService {
     );
   }
 
+  /**
+   * Short claim transaction: RECEIVED and available, or PROCESSING with an
+   * expired lease. Commits before the handler runs.
+   */
+  async claimBatch(
+    client: PrismaClient,
+    options: InboxClaimBatchOptions,
+  ): Promise<{ events: InboxEvent[]; reclaimed: number }> {
+    if (options.batchSize < 1) {
+      throw new RangeError('batchSize must be >= 1');
+    }
+    if (options.claimLeaseMs < 1) {
+      throw new RangeError('claimLeaseMs must be >= 1');
+    }
+
+    const now = options.now ?? new Date();
+    const claimExpiresAt = new Date(now.getTime() + options.claimLeaseMs);
+    const source = options.source;
+
+    return client.$transaction(async (tx) => {
+      const locked =
+        source === undefined
+          ? await tx.$queryRaw<Array<{ id: string; status: string }>>`
+              SELECT id, status
+              FROM inbox_events
+              WHERE (
+                (status = 'RECEIVED'::inbox_event_status AND available_at <= ${now})
+                OR (
+                  status = 'PROCESSING'::inbox_event_status
+                  AND claim_expires_at IS NOT NULL
+                  AND claim_expires_at <= ${now}
+                )
+              )
+              ORDER BY available_at ASC, received_at ASC
+              LIMIT ${options.batchSize}
+              FOR UPDATE SKIP LOCKED
+            `
+          : await tx.$queryRaw<Array<{ id: string; status: string }>>`
+              SELECT id, status
+              FROM inbox_events
+              WHERE source = ${source}
+              AND (
+                (status = 'RECEIVED'::inbox_event_status AND available_at <= ${now})
+                OR (
+                  status = 'PROCESSING'::inbox_event_status
+                  AND claim_expires_at IS NOT NULL
+                  AND claim_expires_at <= ${now}
+                )
+              )
+              ORDER BY available_at ASC, received_at ASC
+              LIMIT ${options.batchSize}
+              FOR UPDATE SKIP LOCKED
+            `;
+
+      if (locked.length === 0) {
+        return { events: [], reclaimed: 0 };
+      }
+
+      const ids = locked.map((row) => row.id);
+      const reclaimed = locked.filter((row) => row.status === 'PROCESSING').length;
+      await tx.inboxEvent.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          status: 'PROCESSING',
+          processingStartedAt: now,
+          claimedAt: now,
+          claimExpiresAt,
+          claimedBy: options.workerId,
+        },
+      });
+
+      const events = await tx.inboxEvent.findMany({
+        where: { id: { in: ids } },
+        orderBy: [{ availableAt: 'asc' }, { receivedAt: 'asc' }],
+      });
+      return { events, reclaimed };
+    });
+  }
+
   async markProcessed(
     client: EventWriteClient,
     eventId: string,
     now = new Date(),
+    processingOutcome?: InboxProcessingOutcome,
   ): Promise<InboxEvent> {
     return client.inboxEvent.update({
       where: { id: eventId },
       data: {
         status: 'PROCESSED',
         processedAt: now,
+        processingOutcome: processingOutcome ?? null,
         lastErrorCode: null,
         lastErrorMessage: null,
+        claimedAt: null,
+        claimExpiresAt: null,
+        claimedBy: null,
       },
     });
   }
@@ -163,21 +256,61 @@ export class InboxService {
     error: unknown,
     options: InboxRetryOptions,
   ): Promise<InboxEvent> {
+    const now = options.now ?? new Date();
     const nextAttempt = event.attemptCount + 1;
     const retryable = isRetryableFailure(error);
     const exhausted = nextAttempt >= options.retryPolicy.maxAttempts;
     const terminal = !retryable || exhausted;
+    const lastErrorCode = errorCodeOf(error);
+    const lastErrorMessage = sanitizeErrorMessage(error);
 
-    return client.inboxEvent.update({
-      where: { id: event.id },
+    const where = {
+      id: event.id,
+      status: 'PROCESSING' as const,
+      ...(options.claimedBy !== undefined ? { claimedBy: options.claimedBy } : {}),
+    };
+
+    if (terminal) {
+      const updated = await client.inboxEvent.updateMany({
+        where,
+        data: {
+          status: 'FAILED',
+          attemptCount: nextAttempt,
+          lastErrorCode,
+          lastErrorMessage,
+          processingOutcome: 'ANOMALY',
+          claimedAt: null,
+          claimExpiresAt: null,
+          claimedBy: null,
+        },
+      });
+      if (updated.count === 0) {
+        return client.inboxEvent.findUniqueOrThrow({ where: { id: event.id } });
+      }
+      return client.inboxEvent.findUniqueOrThrow({ where: { id: event.id } });
+    }
+
+    const delayMs = computeRetryDelayMs(nextAttempt - 1, options.retryPolicy, options.random);
+    const retried = await client.inboxEvent.updateMany({
+      where,
       data: {
-        status: terminal ? 'FAILED' : 'RECEIVED',
+        status: 'RECEIVED',
         attemptCount: nextAttempt,
-        lastErrorCode: errorCodeOf(error),
-        lastErrorMessage: sanitizeErrorMessage(error),
-        ...(terminal ? {} : { processingStartedAt: null }),
+        availableAt: new Date(now.getTime() + delayMs),
+        lastErrorCode,
+        lastErrorMessage,
+        processingStartedAt: null,
+        claimedAt: null,
+        claimExpiresAt: null,
+        claimedBy: null,
+        processingOutcome:
+          lastErrorCode === 'UNRESOLVED_EXTERNAL_REFERENCE' ? 'UNRESOLVED_REFERENCE' : null,
       },
     });
+    if (retried.count === 0) {
+      return client.inboxEvent.findUniqueOrThrow({ where: { id: event.id } });
+    }
+    return client.inboxEvent.findUniqueOrThrow({ where: { id: event.id } });
   }
 }
 

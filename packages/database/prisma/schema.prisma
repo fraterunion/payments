@@ -250,6 +250,8 @@ model Organization {
   customerProviderMappings   CustomerProviderMapping[]
   payments                   Payment[]
   refunds                    Refund[]
+  paymentProviderExecutions  PaymentProviderExecution[]
+  refundProviderExecutions   RefundProviderExecution[]
   idempotencyRecords         IdempotencyRecord[]
   providerAccountConnections ProviderAccountConnection[]
 
@@ -608,8 +610,15 @@ model InboxEvent {
   attemptCount Int              @default(0) @map("attempt_count")
 
   receivedAt          DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  availableAt         DateTime  @default(now()) @map("available_at") @db.Timestamptz(3)
   processingStartedAt DateTime? @map("processing_started_at") @db.Timestamptz(3)
   processedAt         DateTime? @map("processed_at") @db.Timestamptz(3)
+  claimedAt           DateTime? @map("claimed_at") @db.Timestamptz(3)
+  claimExpiresAt      DateTime? @map("claim_expires_at") @db.Timestamptz(3)
+  claimedBy           String?   @map("claimed_by") @db.VarChar(128)
+  /// Bounded processing result when status is PROCESSED (for example
+  /// APPLIED, NOOP_STALE, IGNORED_EVENT_TYPE). Null while pending.
+  processingOutcome   String?   @map("processing_outcome") @db.VarChar(64)
   lastErrorCode       String?   @map("last_error_code") @db.VarChar(64)
   lastErrorMessage    String?   @map("last_error_message") @db.VarChar(512)
 
@@ -621,6 +630,9 @@ model InboxEvent {
   @@unique([scopeKey, source, externalEventId])
   @@index([organizationId])
   @@index([status])
+  @@index([status, availableAt])
+  @@index([status, claimExpiresAt])
+  @@index([source, status, availableAt])
   @@index([eventType])
   @@index([receivedAt])
   @@index([processedAt])
@@ -747,9 +759,9 @@ model ProviderAccountConnection {
 }
 
 /// Canonical FraterUnion Payments payment. This is not a Stripe PaymentIntent
-/// or any other provider object. Provider execution and provider payment IDs
-/// are intentionally absent — a later mapping/execution model will attach
-/// them without assuming one payment equals one provider object forever.
+/// or any other provider object. Provider payment IDs live on
+/// `PaymentProviderExecution`, not on this row. One Payment may have
+/// multiple executions over time (retry, routing, failover).
 ///
 /// Monetary columns are PostgreSQL BIGINT (Prisma BigInt), never floats.
 /// CHECK constraints in `add_payments` enforce amount inequalities, currency
@@ -790,9 +802,10 @@ model Payment {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  customer     Customer?    @relation(fields: [customerId, organizationId], references: [id, organizationId], onDelete: Restrict)
-  refunds      Refund[]
+  organization       Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  customer           Customer?                  @relation(fields: [customerId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  refunds            Refund[]
+  providerExecutions PaymentProviderExecution[]
 
   @@unique([id, organizationId])
   @@index([organizationId, createdAt])
@@ -878,12 +891,71 @@ model Refund {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  payment      Payment      @relation(fields: [paymentId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment            Payment                   @relation(fields: [paymentId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  providerExecutions RefundProviderExecution[]
 
   @@unique([id, organizationId])
+  @@unique([id, organizationId, paymentId])
   @@index([organizationId, createdAt])
   @@index([organizationId, paymentId, createdAt])
   @@index([organizationId, status, createdAt])
   @@map("refunds")
+}
+
+/// Provider-neutral payment execution. A Stripe PaymentIntent (`pi_…`) is
+/// `providerPaymentId` here — never a column on `payments`. Account scope
+/// matches CustomerProviderMapping: `default` or `acct:<id>`.
+model PaymentProviderExecution {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  paymentId      String @map("payment_id") @db.Uuid
+
+  provider                 String  @db.VarChar(32)
+  providerAccountReference String? @map("provider_account_reference") @db.VarChar(255)
+  providerAccountScope     String  @map("provider_account_scope") @db.VarChar(261)
+  providerPaymentId        String  @map("provider_payment_id") @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment          Payment                   @relation(fields: [paymentId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  refundExecutions RefundProviderExecution[]
+
+  @@unique([id, organizationId])
+  @@unique([id, organizationId, paymentId])
+  @@unique([provider, providerAccountScope, providerPaymentId], map: "payment_provider_executions_provider_object_uidx")
+  @@index([organizationId, paymentId])
+  @@map("payment_provider_executions")
+}
+
+/// Provider-neutral refund execution. A Stripe Refund (`re_…`) is
+/// `providerRefundId` here — never a column on `refunds`. The payment
+/// execution FK includes `paymentId` so a refund cannot attach to another
+/// payment's provider object.
+model RefundProviderExecution {
+  id                         String @id @default(uuid(7)) @db.Uuid
+  organizationId             String @map("organization_id") @db.Uuid
+  refundId                   String @map("refund_id") @db.Uuid
+  paymentId                  String @map("payment_id") @db.Uuid
+  paymentProviderExecutionId String @map("payment_provider_execution_id") @db.Uuid
+
+  provider                 String  @db.VarChar(32)
+  providerAccountReference String? @map("provider_account_reference") @db.VarChar(255)
+  providerAccountScope     String  @map("provider_account_scope") @db.VarChar(261)
+  providerRefundId         String  @map("provider_refund_id") @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  refund           Refund                   @relation(fields: [refundId, organizationId, paymentId], references: [id, organizationId, paymentId], onDelete: Restrict)
+  paymentExecution PaymentProviderExecution @relation(fields: [paymentProviderExecutionId, organizationId, paymentId], references: [id, organizationId, paymentId], onDelete: Restrict)
+
+  @@unique([id, organizationId])
+  @@unique([provider, providerAccountScope, providerRefundId], map: "refund_provider_executions_provider_object_uidx")
+  @@index([organizationId, refundId])
+  @@index([paymentProviderExecutionId])
+  @@map("refund_provider_executions")
 }

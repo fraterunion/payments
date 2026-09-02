@@ -33,8 +33,12 @@ This package does **not**:
 - invent idempotency keys
 
 Webhook **signature verification** is exported as `verifyStripeWebhook`.
-HTTP ingestion, inbox persistence, and tenant resolution live in
-`apps/api`. See [`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md).
+Verified event JSON is normalized by `normalizeStripeFinancialEvent` into
+provider-neutral observations. HTTP ingestion lives in `apps/api`;
+canonical application lives in `processStripeInboxEvent`
+(`@fraterunion-payments/events`). See
+[`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md) and
+[`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md).
 
 Connect onboarding lives in `StripeConnectProvider` (Accounts v2 + hosted
 Account Links). Public Payment/Refund APIs are still not wired to Stripe.

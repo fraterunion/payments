@@ -211,7 +211,12 @@ Stripe event IDs already exist across scopes; it never deletes or merges
 inbox rows. `prisma migrate diff --from-config-datasource --to-schema`
 does not propose dropping this index (Prisma does not model partial
 unique indexes; extra SQL-only indexes stay in the database), matching
-the `users_email_lower_uidx` precedent. New migration timestamps
+the `users_email_lower_uidx` precedent. Provider-neutral
+`payment_provider_executions` / `refund_provider_executions` plus Inbox
+claim columns (`available_at`, `claimed_at`, `claim_expires_at`,
+`claimed_by`, `processing_outcome`) were added in
+`add_provider_financial_executions` (timestamp `20260902220000`). Provider
+object ids never live on `payments` or `refunds`. New migration timestamps
 must sort after the latest already-committed migration.
 
 Before committing a migration:
@@ -363,8 +368,17 @@ Indexes were added for known query shapes, not speculatively:
   deduplication, plus SQL-only partial unique
   `inbox_events_stripe_external_event_uidx` on
   `(source, external_event_id) WHERE source = 'stripe'`. Also
-  `organizationId`, `status`, `eventType`, `receivedAt`, and
-  `processedAt`.
+  `organizationId`, `status`, `(status, availableAt)`,
+  `(status, claimExpiresAt)`, `(source, status, availableAt)`,
+  `eventType`, `receivedAt`, and `processedAt`.
+- `PaymentProviderExecution`: unique
+  `(provider, providerAccountScope, providerPaymentId)`, unique
+  `(id, organizationId)`, unique `(id, organizationId, paymentId)`, plus
+  `(organizationId, paymentId)`.
+- `RefundProviderExecution`: unique
+  `(provider, providerAccountScope, providerRefundId)`, unique
+  `(id, organizationId)`, plus `(organizationId, refundId)` and
+  `paymentProviderExecutionId`.
 - `Customer`: `(organizationId, status, createdAt)` and
   `(organizationId, createdAt)` for list/cursor, `(organizationId, email)`
   for tenant-scoped search, unique `(id, organizationId)` for the mapping
@@ -378,7 +392,8 @@ Indexes were added for known query shapes, not speculatively:
   `(organizationId, currency, createdAt)`, unique `(id, organizationId)`.
 - `Refund`: `(organizationId, createdAt)`,
   `(organizationId, paymentId, createdAt)`,
-  `(organizationId, status, createdAt)`, unique `(id, organizationId)`.
+  `(organizationId, status, createdAt)`, unique `(id, organizationId)`,
+  unique `(id, organizationId, paymentId)`.
 - `IdempotencyRecord`: unique `(organizationId, scope, keyHash)` and
   unique `(scope, resourceId)`, plus
   `(organizationId, resourceType, resourceId)` and
@@ -406,12 +421,17 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
   (`source = 'stripe'`, `external_event_id`),
   `(Customer.organizationId, externalReference)`,
   `(Customer.id, organizationId)`,
-  mapping provider-identity and customer/provider-scope uniques.
+  mapping provider-identity and customer/provider-scope uniques,
+  `(PaymentProviderExecution.provider, providerAccountScope, providerPaymentId)`,
+  `(RefundProviderExecution.provider, providerAccountScope, providerRefundId)`,
+  `(Refund.id, organizationId, paymentId)`.
 - Outbox/inbox CHECK constraints in
   `add_transactional_outbox_and_inbox`: non-negative `attemptCount`,
   non-empty event/source identity, `PROCESSED` requires `processedAt`,
   outbox `PROCESSING` requires claim fields, inbox `scopeKey` is either
   `'platform'` (null organization) or the organization UUID text.
+  `add_provider_financial_executions` adds inbox claim-field CHECKs and
+  provider-execution account-scope / non-empty id CHECKs.
 - Customer/mapping CHECKs in `add_customers_and_provider_mappings`:
   status/`archivedAt` consistency, non-empty optional text, object
   metadata, non-empty provider identity, and

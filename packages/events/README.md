@@ -11,7 +11,7 @@ and [ADR-007](../../docs/decisions/ADR-007-transactional-outbox-and-inbox.md).
 ```text
 src/
   outbox/     enqueue, SKIP LOCKED claim, processed / retry / fail
-  inbox/      receive (NEW / DUPLICATE / CONFLICT), processing transitions
+  inbox/      receive, claimBatch, Stripe financial processor
   retry/      bounded exponential backoff with full jitter
   json/       canonical JSON for hashing
   hash/       SHA-256 payload digest

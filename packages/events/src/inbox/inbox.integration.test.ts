@@ -431,6 +431,41 @@ describePostgres('InboxService (real PostgreSQL)', () => {
     }
   });
 
+  it('claims one Stripe-source row across concurrent SKIP LOCKED workers', async () => {
+    const org = await createTestOrganization(db);
+    organizationIds.push(org.id);
+    const source = `${sourcePrefix}-claim-${randomUUID().slice(0, 8)}`;
+    const received = await inbox.receive(db, {
+      organizationId: org.id,
+      source,
+      externalEventId: `claim-${randomUUID()}`,
+      eventType: 'events.test',
+      payload: { claim: true },
+    });
+    expect(received.event.status).toBe('RECEIVED');
+
+    const [first, second] = await Promise.all([
+      inbox.claimBatch(db, {
+        workerId: 'worker-a',
+        batchSize: 10,
+        claimLeaseMs: 60_000,
+        source,
+      }),
+      inbox.claimBatch(db, {
+        workerId: 'worker-b',
+        batchSize: 10,
+        claimLeaseMs: 60_000,
+        source,
+      }),
+    ]);
+    const claimedIds = [...first.events, ...second.events].map((event) => event.id);
+    expect(claimedIds).toHaveLength(1);
+    expect(claimedIds[0]).toBe(received.event.id);
+    const row = await db.inboxEvent.findUniqueOrThrow({ where: { id: received.event.id } });
+    expect(row.status).toBe('PROCESSING');
+    expect(row.claimedBy === 'worker-a' || row.claimedBy === 'worker-b').toBe(true);
+  });
+
   it('proves Stripe duplicate precheck SQL would fail and current inbox rows are unique', async () => {
     const duplicates = await db.$queryRaw<Array<{ present: boolean }>>`
       SELECT EXISTS (

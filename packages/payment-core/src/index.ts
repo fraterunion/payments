@@ -72,8 +72,18 @@ export {
   remainingCapturableAmount,
   requireCustomerAction,
   resumeAuthorization,
+  returnToRequiresPaymentMethod,
 } from './payments/payment.js';
 export type { CreatePaymentInput, Payment } from './payments/payment.js';
+export {
+  applyPaymentProviderObservation,
+  PAYMENT_OBSERVATION_OUTCOMES,
+} from './payments/apply-payment-observation.js';
+export type {
+  PaymentObservationApplication,
+  PaymentObservationOutcomeKind,
+  PaymentProviderObservation,
+} from './payments/apply-payment-observation.js';
 export {
   assertPaymentTransition,
   canTransitionPayment,
@@ -104,3 +114,11 @@ export {
   succeedRefund,
 } from './refunds/refund.js';
 export type { CreateRefundInput, Refund, RefundReason, RefundState } from './refunds/refund.js';
+export {
+  applyRefundProviderObservation,
+  REFUND_OBSERVATION_OUTCOMES,
+} from './refunds/apply-refund-observation.js';
+export type {
+  RefundObservationApplication,
+  RefundProviderObservation,
+} from './refunds/apply-refund-observation.js';

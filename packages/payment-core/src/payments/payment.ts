@@ -169,6 +169,25 @@ export function resumeAuthorization(payment: Payment, occurredAt?: Date): Paymen
   return withStatus(payment, PAYMENT_STATES.AUTHORIZING, nowOr(occurredAt));
 }
 
+/**
+ * Stripe (and similar providers) may ask for another payment method on the
+ * same execution after AUTHORIZING or REQUIRES_ACTION. This is not terminal
+ * FAILED. Domain failure fields stay unset — persistence only stores
+ * failure columns on FAILED.
+ */
+export function returnToRequiresPaymentMethod(payment: Payment, occurredAt?: Date): Payment {
+  if (
+    payment.status !== PAYMENT_STATES.AUTHORIZING &&
+    payment.status !== PAYMENT_STATES.REQUIRES_ACTION
+  ) {
+    throw new PaymentInvariantError(
+      `Cannot return to requires-payment-method in state ${payment.status}.`,
+      DOMAIN_ERROR_CODES.INVALID_PAYMENT_OPERATION,
+    );
+  }
+  return withStatus(payment, PAYMENT_STATES.REQUIRES_PAYMENT_METHOD, nowOr(occurredAt));
+}
+
 export function canApplyAuthorization(payment: Payment): boolean {
   return payment.status === PAYMENT_STATES.AUTHORIZING;
 }
@@ -259,7 +278,13 @@ export function applyCapture(payment: Payment, captureAmount: Money, occurredAt?
 }
 
 export function canCancelPayment(payment: Payment): boolean {
-  return payment.status === PAYMENT_STATES.AUTHORIZED;
+  return (
+    payment.status === PAYMENT_STATES.CREATED ||
+    payment.status === PAYMENT_STATES.REQUIRES_PAYMENT_METHOD ||
+    payment.status === PAYMENT_STATES.AUTHORIZING ||
+    payment.status === PAYMENT_STATES.REQUIRES_ACTION ||
+    payment.status === PAYMENT_STATES.AUTHORIZED
+  );
 }
 
 export function cancelPayment(payment: Payment, occurredAt?: Date): Payment {

@@ -28,3 +28,10 @@ export {
 } from './webhook-errors.js';
 export { assertStripeWebhookSecret } from './webhook-secret.js';
 export type { VerifiedStripeWebhook, VerifyStripeWebhookInput } from './webhook-types.js';
+export {
+  normalizeStripeFinancialEvent,
+  STRIPE_FINANCIAL_PAYMENT_EVENT_TYPES,
+  STRIPE_FINANCIAL_REFUND_EVENT_TYPES,
+  StripeWebhookNormalizeError,
+} from './webhook-normalize.js';
+export type { NormalizedStripeFinancialEvent } from './webhook-normalize.js';

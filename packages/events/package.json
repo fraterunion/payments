@@ -19,7 +19,9 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@fraterunion-payments/database": "workspace:*"
+    "@fraterunion-payments/database": "workspace:*",
+    "@fraterunion-payments/payment-core": "workspace:*",
+    "@fraterunion-payments/provider-stripe": "workspace:*"
   },
   "devDependencies": {
     "@fraterunion-payments/eslint-config": "workspace:*",

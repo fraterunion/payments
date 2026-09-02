@@ -2,9 +2,15 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config as loadDotenv } from 'dotenv';
-import { createPrismaClient } from '@fraterunion-payments/database';
-import { EventHandlerRegistry, OutboxService } from '@fraterunion-payments/events';
+import { createPrismaClient, Prisma } from '@fraterunion-payments/database';
+import {
+  EventHandlerRegistry,
+  InboxService,
+  OutboxService,
+  type StripeInboxAuditWrite,
+} from '@fraterunion-payments/events';
 import { loadWorkerEnvironment, WorkerEnvironmentValidationError } from './config/environment.js';
+import { InboxWorker } from './inbox-worker.js';
 import { createWorkerLogger } from './logger.js';
 import { OutboxWorker } from './outbox-worker.js';
 import { registerShutdownHandlers } from './shutdown.js';
@@ -31,13 +37,32 @@ async function bootstrap(): Promise<void> {
   logger.info('Database connection established');
 
   const registry = new EventHandlerRegistry();
-  const worker = new OutboxWorker({
+  const writeAudit: StripeInboxAuditWrite = async (client, input) => {
+    await client.auditLog.create({
+      data: {
+        organizationId: input.organizationId,
+        action: input.action,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        metadata: input.metadata as Prisma.InputJsonValue,
+      },
+    });
+  };
+  const outboxWorker = new OutboxWorker({
     database,
     outbox: new OutboxService(),
     registry,
     environment,
     logger,
     workerId,
+  });
+  const inboxWorker = new InboxWorker({
+    database,
+    inbox: new InboxService(),
+    environment,
+    logger,
+    workerId,
+    writeAudit,
   });
 
   let shuttingDown = false;
@@ -48,7 +73,8 @@ async function bootstrap(): Promise<void> {
     shuttingDown = true;
     logger.info({ signal }, 'Received shutdown signal');
     try {
-      await worker.stop();
+      await outboxWorker.stop();
+      await inboxWorker.stop();
     } finally {
       await database.$disconnect();
       logger.info('Database connection closed');
@@ -60,7 +86,8 @@ async function bootstrap(): Promise<void> {
     void shutdown(signal);
   });
 
-  await worker.start();
+  await outboxWorker.start();
+  await inboxWorker.start();
 }
 
 bootstrap().catch((error: unknown) => {

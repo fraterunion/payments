@@ -1,9 +1,11 @@
 # Stripe webhook ingestion
 
 Receipt boundary for Stripe webhook HTTP deliveries. This document
-describes Commit 17: verify, resolve tenant, persist a durable inbox
-row, and acknowledge. It does **not** normalize payment lifecycle,
-mutate `Payment` / `Refund`, write a ledger, or enqueue outbox events.
+describes verify, resolve tenant, persist a durable inbox row, and
+acknowledge. Canonical Payment / Refund mutation is documented in
+[`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md).
+This HTTP path does **not** write a ledger or enqueue financial outbox
+events.
 
 Last updated: 2026-09-02
 
@@ -23,10 +25,16 @@ Tenant/account resolver
   v
 InboxEvent(RECEIVED)
   |
-  | future Commit 18
   v
-Normalizer / domain processing
+InboxWorker / processStripeInboxEvent
+  |
+  v
+Canonical Payment / Refund
 ```
+
+See [`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md)
+for snapshot application, stale/no-op, unknown references, and crash
+atomicity.
 
 The HTTP request itself does not execute financial business logic.
 `InboxService.receive` is a single insert-or-detect operation against
@@ -44,17 +52,17 @@ FUP Stripe webhook endpoint
    |
    | verify raw body + signature
    v
-Durable Inbox
+Durable Inbox (RECEIVED)
    |
-   | asynchronous processing later
+   | InboxWorker (source=stripe)
    v
-Worker
+Normalization — see stripe-webhook-normalization.md
 ```
 
-The generic outbox worker does **not** claim inbox rows. Stripe events
-remain `RECEIVED` until Commit 18 registers normalization handlers.
-Unknown outbox types already dead-letter as `UNKNOWN_EVENT_TYPE`; this
-commit does not feed Stripe events into that path.
+HTTP ingestion still only verifies, resolves tenant, and persists the
+inbox row. Canonical Payment/Refund mutation happens asynchronously in
+the inbox processor. The generic **outbox** worker does not claim inbox
+rows. Stripe financial processing uses a dedicated InboxWorker path.
 
 ## HTTP endpoint
 

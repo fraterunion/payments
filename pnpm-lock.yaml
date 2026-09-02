@@ -562,6 +562,12 @@ importers:
       '@fraterunion-payments/database':
         specifier: workspace:*
         version: link:../database
+      '@fraterunion-payments/payment-core':
+        specifier: workspace:*
+        version: link:../payment-core
+      '@fraterunion-payments/provider-stripe':
+        specifier: workspace:*
+        version: link:../provider-stripe
     devDependencies:
       '@fraterunion-payments/eslint-config':
         specifier: workspace:*
