@@ -72,3 +72,4 @@ catalog:
   argon2: 0.45.1
   jsonwebtoken: 9.0.3
   '@types/jsonwebtoken': 9.0.10
+  stripe: 22.6.1

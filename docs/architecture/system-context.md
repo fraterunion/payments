@@ -9,9 +9,11 @@ substrate, the provider-neutral payment domain
 (`@fraterunion-payments/payment-core`), provider contracts
 (`@fraterunion-payments/provider-contracts`), canonical customers
 with provider mappings, persisted canonical payments, persisted
-canonical refunds without provider execution, and durable
+canonical refunds without provider execution, durable
 financial-command idempotency (`idempotency_records`; see
-[`idempotency.md`](./idempotency.md)). See the root
+[`idempotency.md`](./idempotency.md)), and an isolated Stripe adapter
+(`@fraterunion-payments/provider-stripe`) that is not yet wired to
+public Payment/Refund APIs. See the root
 [`README.md`](../../README.md). This document still defines the broader
 target shape later commits build toward.
 
@@ -158,9 +160,11 @@ reliability requirements become clear.
   the API's request/response path.
 - **Internal package boundaries.** Domain logic
   (`@fraterunion-payments/payment-core`), provider contracts
-  (`@fraterunion-payments/provider-contracts`), and shared utilities are
-  separated into packages with explicit public exports, so that boundaries
-  are enforced by package structure even inside the monolith.
+  (`@fraterunion-payments/provider-contracts`), and the Stripe adapter
+  (`@fraterunion-payments/provider-stripe`) are separated into packages
+  with explicit public exports, so that boundaries are enforced by
+  package structure even inside the monolith. The Stripe SDK is imported
+  only by `provider-stripe`.
 - **No premature microservices.** Splitting the API or worker into
   multiple deployable services is not planned for v1. A modular monolith
   is easier to operate correctly at this stage and does not preclude

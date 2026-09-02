@@ -20,8 +20,9 @@ transactional outbox / durable inbox substrate, the provider-neutral
 payment domain, provider contracts/registry, canonical customers with
 provider mappings, persisted canonical payments, persisted canonical
 refunds (create/get/list plus internal lifecycle, without provider
-execution), and durable financial-command idempotency are in place.
-Provider adapters, ledger posting,
+execution), durable financial-command idempotency, and an isolated
+Stripe provider adapter are in place. Public Payment/Refund APIs are
+not wired to Stripe yet. Connect onboarding, ledger posting,
 reconciliation, billing, and outbound organization webhooks are not
 implemented yet.
 
@@ -41,6 +42,7 @@ packages/
   eslint-config/        Shared ESLint flat configs (base, next, node)
   payment-core/         Provider-independent payment domain (money, states, refunds)
   provider-contracts/   Provider interface, capabilities, and registry
+  provider-stripe/      Stripe PaymentProvider adapter (SDK isolated here)
   sdk-typescript/       Future TypeScript SDK (@fraterunion-payments/sdk)
   shared/                Small shared utilities (e.g. assertNever)
   typescript-config/    Shared strict TypeScript configs
@@ -81,6 +83,8 @@ implementation must follow them, not the other way around.
   money, payment aggregate, and refund invariants.
 - [Provider contracts](docs/architecture/provider-contracts.md) —
   provider interface, capabilities, registry, and normalized observations.
+- [Stripe provider adapter](docs/architecture/stripe-provider-adapter.md) —
+  isolated Stripe SDK adapter, status mapping, and money conversion.
 - [Payment lifecycle](docs/architecture/payment-lifecycle.md) — the
   normalized payment state machine and failure/refund handling.
 - [Subscription lifecycle](docs/architecture/subscription-lifecycle.md) —

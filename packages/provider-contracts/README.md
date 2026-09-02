@@ -39,8 +39,9 @@ Authoritative notes:
 
 ## What this package is not
 
-It does not implement Stripe or any other provider, persist provider
-accounts, verify webhooks, store secrets, or expose raw SDK objects.
+It does not persist provider accounts, verify webhooks, store secrets,
+or expose raw SDK objects. Stripe adaptation lives in
+`@fraterunion-payments/provider-stripe`.
 
 A provider operation response is an **observation**, not always final
 settlement state. Webhooks and `retrievePayment` later converge it.

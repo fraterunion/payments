@@ -13,7 +13,7 @@ payment-core
         ↑
 provider-contracts
         ↑
-provider-stripe (future)
+provider-stripe
 ```
 
 `payment-core` remains unaware of providers. Provider adapters depend on
@@ -35,7 +35,7 @@ provider adapter
 application / payment-core
 ```
 
-Conceptual future mapping (docs only — not implemented):
+Conceptual mapping (Stripe types stop inside the adapter):
 
 ```text
 Stripe PaymentIntent
@@ -191,7 +191,8 @@ rejects secret-bearing keys. Adapters may tighten those limits further.
 
 ## Deferred
 
-- Stripe / any real adapter
+- Public API → Stripe orchestration
+- Stripe Connect account onboarding
 - Provider account persistence and secrets
 - Webhook verification and parsing
 - Merchant-account currency resolution

@@ -9,7 +9,8 @@ validation and error handling, versioning, Swagger) and, as of the `auth`,
 `customers`, and `payments` modules, human authentication, organization-scoped
 API keys, role/scope-based access control, tenant-safe customers, and
 canonical payment create/get/list (internal lifecycle only; no provider
-execution). Billing and provider adapters remain out of scope. See
+execution). The Stripe adapter package exists but is not imported or
+wired here. Billing remains out of scope. See
 [ADR-001](../../docs/decisions/ADR-001-nestjs-nextjs-and-typescript.md) for
 why NestJS was chosen,
 [`../../docs/architecture/security-boundaries.md`](../../docs/architecture/security-boundaries.md)

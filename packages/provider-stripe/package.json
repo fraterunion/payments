@@ -1,0 +1,34 @@
+{
+  "name": "@fraterunion-payments/provider-stripe",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@fraterunion-payments/payment-core": "workspace:*",
+    "@fraterunion-payments/provider-contracts": "workspace:*",
+    "stripe": "catalog:"
+  },
+  "devDependencies": {
+    "@fraterunion-payments/eslint-config": "workspace:*",
+    "@fraterunion-payments/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
