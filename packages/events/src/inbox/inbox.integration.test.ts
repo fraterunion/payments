@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { hashPayload } from '../hash/payload-hash.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import {
   cleanupOrganizations,
@@ -8,6 +9,7 @@ import {
   createTestOrganization,
   describePostgres,
 } from '../test/postgres.js';
+import { PLATFORM_SCOPE_KEY } from '../types.js';
 import { InboxService } from './inbox.service.js';
 
 describePostgres('InboxService (real PostgreSQL)', () => {
@@ -22,6 +24,9 @@ describePostgres('InboxService (real PostgreSQL)', () => {
   });
 
   afterAll(async () => {
+    await db.inboxEvent.deleteMany({
+      where: { source: 'stripe', externalEventId: { startsWith: 'evt_fup_inbox_' } },
+    });
     await cleanupPlatformEvents(db, { sourcePrefix: 'events-test-inbox-' });
     await cleanupOrganizations(db, organizationIds);
     await db.$disconnect();
@@ -253,5 +258,208 @@ describePostgres('InboxService (real PostgreSQL)', () => {
     await expect(inbox.beginProcessing(db, received.event.id)).rejects.toMatchObject({
       code: 'ALREADY_PROCESSED',
     });
+  });
+
+  it('keeps generic sources isolated across tenants while Stripe Event IDs are globally unique', async () => {
+    const firstOrg = await createTestOrganization(db);
+    const secondOrg = await createTestOrganization(db);
+    organizationIds.push(firstOrg.id, secondOrg.id);
+    const stripeEventId = `evt_fup_inbox_${randomUUID()}`;
+
+    const platform = await inbox.receive(db, {
+      source: 'stripe',
+      externalEventId: stripeEventId,
+      eventType: 'payment_intent.succeeded',
+      payload: { id: stripeEventId, object: 'event' },
+    });
+    const tenant = await inbox.receive(db, {
+      organizationId: firstOrg.id,
+      source: 'stripe',
+      externalEventId: stripeEventId,
+      eventType: 'payment_intent.succeeded',
+      payload: { id: stripeEventId, object: 'event' },
+    });
+    expect(tenant.kind).toBe('DUPLICATE');
+    expect(tenant.event.id).toBe(platform.event.id);
+    expect(
+      await db.inboxEvent.count({ where: { source: 'stripe', externalEventId: stripeEventId } }),
+    ).toBe(1);
+
+    const conflict = await inbox.receive(db, {
+      organizationId: secondOrg.id,
+      source: 'stripe',
+      externalEventId: stripeEventId,
+      eventType: 'payment_intent.succeeded',
+      payload: { id: stripeEventId, object: 'event', mutated: true },
+    });
+    expect(conflict.kind).toBe('CONFLICT');
+    expect(conflict.event.id).toBe(platform.event.id);
+    expect(conflict.event.payload).toEqual({ id: stripeEventId, object: 'event' });
+  });
+
+  it('rejects a second Stripe inbox row at the database regardless of scope', async () => {
+    const org = await createTestOrganization(db);
+    organizationIds.push(org.id);
+    const externalEventId = `evt_fup_inbox_${randomUUID()}`;
+    const payload = { id: externalEventId, object: 'event' };
+    const first = await inbox.receive(db, {
+      source: 'stripe',
+      externalEventId,
+      eventType: 'payment_intent.succeeded',
+      payload,
+    });
+
+    await expect(
+      db.inboxEvent.create({
+        data: {
+          organizationId: org.id,
+          scopeKey: org.id,
+          source: 'stripe',
+          externalEventId,
+          eventType: 'payment_intent.succeeded',
+          payload,
+          payloadHash: hashPayload(payload),
+          status: 'RECEIVED',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' });
+
+    const replay = await inbox.receive(db, {
+      organizationId: org.id,
+      source: 'stripe',
+      externalEventId,
+      eventType: 'payment_intent.succeeded',
+      payload,
+    });
+    expect(replay.kind).toBe('DUPLICATE');
+    expect(replay.event.id).toBe(first.event.id);
+  });
+
+  it('promotes unresolved Stripe identity to a known tenant and never downgrades or reassigns', async () => {
+    const firstOrg = await createTestOrganization(db);
+    const secondOrg = await createTestOrganization(db);
+    organizationIds.push(firstOrg.id, secondOrg.id);
+    const externalEventId = `evt_fup_inbox_${randomUUID()}`;
+    const payload = { id: externalEventId, object: 'event' };
+
+    const received = await inbox.receive(db, {
+      source: 'stripe',
+      externalEventId,
+      eventType: 'payment_intent.succeeded',
+      payload,
+    });
+    expect(received.event.organizationId).toBeNull();
+    expect(received.event.scopeKey).toBe(PLATFORM_SCOPE_KEY);
+
+    const assigned = await inbox.assignOrganizationIfUnresolved(db, received.event.id, firstOrg.id);
+    expect(assigned.kind).toBe('ASSIGNED');
+    expect(assigned.event.organizationId).toBe(firstOrg.id);
+    expect(assigned.event.scopeKey).toBe(firstOrg.id);
+    expect(assigned.event.payload).toEqual(payload);
+
+    const sameTenant = await inbox.assignOrganizationIfUnresolved(
+      db,
+      received.event.id,
+      firstOrg.id,
+    );
+    expect(sameTenant.kind).toBe('UNCHANGED');
+
+    const crossTenant = await inbox.assignOrganizationIfUnresolved(
+      db,
+      received.event.id,
+      secondOrg.id,
+    );
+    expect(crossTenant.kind).toBe('TENANT_CONFLICT');
+    expect(crossTenant.event.organizationId).toBe(firstOrg.id);
+    expect(crossTenant.event.scopeKey).toBe(firstOrg.id);
+
+    const laterUnknown = await inbox.receive(db, {
+      source: 'stripe',
+      externalEventId,
+      eventType: 'payment_intent.succeeded',
+      payload,
+    });
+    expect(laterUnknown.kind).toBe('DUPLICATE');
+    expect(laterUnknown.event.organizationId).toBe(firstOrg.id);
+    expect(laterUnknown.event.scopeKey).toBe(firstOrg.id);
+  });
+
+  it('deduplicates concurrent unknown and known Stripe receipts into one row', async () => {
+    const org = await createTestOrganization(db);
+    organizationIds.push(org.id);
+    const payload = { object: 'event', n: 1 };
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const externalEventId = `evt_fup_inbox_${randomUUID()}`;
+      const second = createTestClient();
+      try {
+        const results = await Promise.all([
+          inbox.receive(db, {
+            source: 'stripe',
+            externalEventId,
+            eventType: 'payment_intent.succeeded',
+            payload,
+          }),
+          inbox.receive(second, {
+            organizationId: org.id,
+            source: 'stripe',
+            externalEventId,
+            eventType: 'payment_intent.succeeded',
+            payload,
+          }),
+        ]);
+        const kinds = results.map((result) => result.kind).sort();
+        expect(kinds).toEqual(['DUPLICATE', 'NEW']);
+        expect(results[0]?.event.id).toBe(results[1]?.event.id);
+
+        const eventId = results[0]?.event.id;
+        expect(eventId).toBeDefined();
+        if (eventId === undefined) {
+          throw new Error('expected inbox event id');
+        }
+        await inbox.assignOrganizationIfUnresolved(db, eventId, org.id);
+        const rows = await db.inboxEvent.findMany({
+          where: { source: 'stripe', externalEventId },
+        });
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.organizationId).toBe(org.id);
+        expect(rows[0]?.scopeKey).toBe(org.id);
+        expect(rows[0]?.payload).toEqual(payload);
+      } finally {
+        await second.$disconnect();
+      }
+    }
+  });
+
+  it('proves Stripe duplicate precheck SQL would fail and current inbox rows are unique', async () => {
+    const duplicates = await db.$queryRaw<Array<{ present: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM "inbox_events"
+        WHERE "source" = 'stripe'
+        GROUP BY "source", "external_event_id"
+        HAVING COUNT(*) > 1
+      ) AS "present"
+    `;
+    expect(duplicates[0]?.present).toBe(false);
+
+    await expect(
+      db.$executeRawUnsafe(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1
+            FROM (
+              VALUES ('stripe', 'evt_precheck_dup'), ('stripe', 'evt_precheck_dup')
+            ) AS probe("source", "external_event_id")
+            GROUP BY "source", "external_event_id"
+            HAVING COUNT(*) > 1
+          ) THEN
+            RAISE EXCEPTION
+              'Cannot enforce global Stripe event identity: duplicate (source, external_event_id) rows exist for source=stripe. Resolve them manually before applying this migration. No inbox rows were deleted or merged.';
+          END IF;
+        END $$;
+      `),
+    ).rejects.toThrow(/Cannot enforce global Stripe event identity/);
   });
 });

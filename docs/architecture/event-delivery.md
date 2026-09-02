@@ -36,7 +36,8 @@ claim the row.
 
 The **durable inbox** is for events a consumer receives that may arrive
 more than once. The consumer durably claims identity
-`(scopeKey, source, externalEventId)` before side effects.
+`(scopeKey, source, externalEventId)` before side effects. Stripe inbound
+events additionally claim `(source='stripe', externalEventId)` globally.
 
 Do not conflate the two. Publishing and inbound deduplication are
 different problems.
@@ -212,8 +213,29 @@ therefore have a non-null `scopeKey`:
 - platform/system events: `scopeKey = 'platform'` and `organizationId` is
   null
 
-A CHECK constraint keeps those two representations consistent. Uniqueness
-is `(scopeKey, source, externalEventId)`.
+A CHECK constraint keeps those two representations consistent. Generic
+uniqueness is `(scopeKey, source, externalEventId)`.
+
+Stripe Event IDs are additionally globally unique. A Stripe `evt_…` is
+provider event identity; tenant `scopeKey` is routing, not identity:
+
+```text
+Generic Inbox identity:
+(scopeKey, source, externalEventId)
+
+Stripe additional invariant:
+(source='stripe', externalEventId) globally unique
+```
+
+SQL-only partial unique index `inbox_events_stripe_external_event_uidx`
+enforces the Stripe invariant without changing other sources. Same
+external id across two tenants remains allowed for generic sources.
+`InboxService.receive` reloads globally when a Stripe unique conflict
+fires. An unresolved connected-account receipt may persist as
+platform-scoped and later promote `organizationId` / `scopeKey` in place
+when a verified duplicate delivery resolves a tenant. Known tenant
+association is never downgraded to platform and never silently moved to
+another organization.
 
 The full inbound payload **is** stored on `InboxEvent.payload` as JSONB
 (object only). Commit 7 originally hashed without persisting the body;
@@ -232,7 +254,8 @@ is still the conflict detector. See
 
 A conflict does not overwrite the original hash. It is an anomaly, not a
 normal duplicate. Concurrent first receipts serialize on the unique
-constraint: one `NEW`, the rest `DUPLICATE` or `CONFLICT`.
+constraint (and, for Stripe, the additional global Event ID index): one
+`NEW`, the rest `DUPLICATE` or `CONFLICT`.
 
 ### Canonical JSON hashing
 

@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { InboxService, type InboxReceiveKind } from '@fraterunion-payments/events';
+import {
+  InboxService,
+  type InboxOrganizationAssignKind,
+  type InboxReceiveKind,
+} from '@fraterunion-payments/events';
 import type { Prisma } from '@fraterunion-payments/database';
 import {
   STRIPE_PROVIDER_CODE,
@@ -7,6 +11,7 @@ import {
   type VerifiedStripeWebhook,
 } from '@fraterunion-payments/provider-stripe';
 import { PinoLogger } from 'nestjs-pino';
+import { ERROR_CODES } from '../common/constants/error-codes.constants';
 import { AppConfigService } from '../config/app-config.service';
 import { DatabaseService } from '../database/database.service';
 import {
@@ -52,27 +57,29 @@ export class StripeWebhookIngestionService {
 
     const db = this.databaseService.getClient();
     const resolved = await this.resolveTenant(verified.accountId);
-    const existingIdentity = await db.inboxEvent.findFirst({
-      where: {
-        source: STRIPE_INBOX_SOURCE,
-        externalEventId: verified.eventId,
-      },
-      select: { organizationId: true },
-    });
-    const organizationId =
-      existingIdentity !== null
-        ? (existingIdentity.organizationId ?? undefined)
-        : resolved.organizationId;
 
     const result = await this.inbox.receive(db, {
       source: STRIPE_INBOX_SOURCE,
       externalEventId: verified.eventId,
       eventType: verified.eventType,
       payload: verified.payload as Prisma.InputJsonValue,
-      ...(organizationId !== undefined ? { organizationId } : {}),
+      ...(resolved.organizationId !== undefined ? { organizationId: resolved.organizationId } : {}),
     });
 
-    this.logReceipt(verified, resolved, result.kind);
+    let routingKind: InboxOrganizationAssignKind | undefined;
+    if (result.kind !== 'CONFLICT' && resolved.organizationId !== undefined) {
+      const assigned = await this.inbox.assignOrganizationIfUnresolved(
+        db,
+        result.event.id,
+        resolved.organizationId,
+      );
+      routingKind = assigned.kind;
+      if (assigned.kind === 'TENANT_CONFLICT') {
+        this.logTenantConflict(verified, assigned.event.organizationId, resolved.organizationId);
+      }
+    }
+
+    this.logReceipt(verified, resolved, result.kind, routingKind);
     return ACK;
   }
 
@@ -102,6 +109,24 @@ export class StripeWebhookIngestionService {
     };
   }
 
+  private logTenantConflict(
+    verified: VerifiedStripeWebhook,
+    persistedOrganizationId: string | null,
+    attemptedOrganizationId: string,
+  ): void {
+    this.logger.warn(
+      {
+        provider: 'stripe',
+        eventId: verified.eventId,
+        eventType: verified.eventType,
+        errorCode: ERROR_CODES.STRIPE_WEBHOOK_TENANT_CONFLICT,
+        ...(persistedOrganizationId !== null ? { organizationId: persistedOrganizationId } : {}),
+        attemptedOrganizationId,
+      },
+      'Stripe webhook tenant routing conflict; original association retained',
+    );
+  }
+
   private logReceipt(
     verified: VerifiedStripeWebhook,
     resolved: {
@@ -110,6 +135,7 @@ export class StripeWebhookIngestionService {
       readonly unresolvedAccount: boolean;
     },
     kind: InboxReceiveKind,
+    routingKind: InboxOrganizationAssignKind | undefined,
   ): void {
     const fields = {
       provider: 'stripe',
@@ -120,6 +146,7 @@ export class StripeWebhookIngestionService {
       unresolvedAccount: resolved.unresolvedAccount,
       ...(resolved.organizationId !== undefined ? { organizationId: resolved.organizationId } : {}),
       ...(resolved.connectionId !== undefined ? { connectionId: resolved.connectionId } : {}),
+      ...(routingKind !== undefined ? { routing: routingKind.toLowerCase() } : {}),
     };
     if (kind === 'CONFLICT') {
       this.logger.warn(fields, 'Stripe webhook payload conflict; original inbox row retained');

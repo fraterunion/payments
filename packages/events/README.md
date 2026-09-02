@@ -68,6 +68,14 @@ organization UUID or `'platform'`. Same identity + same canonical hash is
 a duplicate. Same identity + different hash is a conflict — the original
 payload and hash are not overwritten.
 
+Stripe Event IDs are additionally globally unique
+(`source='stripe'`, `externalEventId`) because a Stripe Event is provider
+identity and tenant scope is routing. `receive()` reloads that existing
+row on unique conflict instead of leaking Prisma `P2002`.
+`assignOrganizationIfUnresolved` may promote an unresolved platform row
+to a known tenant; it never overwrites payload, never downgrades tenant
+→ platform, and never reassigns organization A → B.
+
 `payload` is the verified inbound JSON object. Stripe webhook ingestion
 stores the signed event JSON here after signature verification. See
 [`docs/architecture/stripe-webhook-ingestion.md`](../../docs/architecture/stripe-webhook-ingestion.md).

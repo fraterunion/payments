@@ -3,18 +3,29 @@ import { Prisma } from '@fraterunion-payments/database';
 import { errorCodeOf, isRetryableFailure, TerminalEventError } from '../errors.js';
 import { hashPayload } from '../hash/payload-hash.js';
 import { sanitizeErrorMessage } from '../sanitize/error-sanitize.js';
-import { PLATFORM_SCOPE_KEY, type EventWriteClient } from '../types.js';
-import type { InboxReceiveResult, InboxRetryOptions, ReceiveInboxInput } from './inbox.types.js';
+import {
+  isGloballyUniqueInboxSource,
+  PLATFORM_SCOPE_KEY,
+  type EventWriteClient,
+} from '../types.js';
+import type {
+  InboxOrganizationAssignResult,
+  InboxReceiveResult,
+  InboxRetryOptions,
+  ReceiveInboxInput,
+} from './inbox.types.js';
 
 export function inboxScopeKey(organizationId: string | undefined): string {
   return organizationId === undefined ? PLATFORM_SCOPE_KEY : organizationId;
 }
 
 /**
- * Durable inbox. Identity is `(scopeKey, source, externalEventId)` where
- * `scopeKey` is the organization UUID or `platform`. Concurrent first
- * receipts serialize on the unique constraint. `payload` is the verified
- * inbound JSON object (Stripe webhook ingestion stores the signed event).
+ * Durable inbox. Generic identity is `(scopeKey, source, externalEventId)`
+ * where `scopeKey` is the organization UUID or `platform`. Stripe Event
+ * IDs are additionally unique on `(source, externalEventId)` regardless
+ * of scope — tenant association is routing, not identity. Concurrent
+ * first receipts serialize on those unique constraints. `payload` is the
+ * verified inbound JSON object and is never overwritten.
  */
 export class InboxService {
   async receive(client: EventWriteClient, input: ReceiveInboxInput): Promise<InboxReceiveResult> {
@@ -48,14 +59,10 @@ export class InboxService {
       }
     }
 
-    const existing = await client.inboxEvent.findUnique({
-      where: {
-        scopeKey_source_externalEventId: {
-          scopeKey,
-          source: input.source,
-          externalEventId: input.externalEventId,
-        },
-      },
+    const existing = await findExistingInboxEvent(client, {
+      scopeKey,
+      source: input.source,
+      externalEventId: input.externalEventId,
     });
 
     if (existing === null) {
@@ -67,6 +74,45 @@ export class InboxService {
     }
 
     return { kind: 'DUPLICATE', event: existing };
+  }
+
+  /**
+   * Promote an unresolved (platform-scoped) inbox row to a known tenant.
+   * Does not overwrite payload. Never clears a known organization and
+   * never moves a row from one tenant to another.
+   */
+  async assignOrganizationIfUnresolved(
+    client: EventWriteClient,
+    eventId: string,
+    organizationId: string,
+  ): Promise<InboxOrganizationAssignResult> {
+    if (organizationId.trim().length === 0) {
+      throw new TypeError('organizationId must be non-empty.');
+    }
+
+    const promoted = await client.inboxEvent.updateMany({
+      where: {
+        id: eventId,
+        organizationId: null,
+        scopeKey: PLATFORM_SCOPE_KEY,
+      },
+      data: {
+        organizationId,
+        scopeKey: organizationId,
+      },
+    });
+
+    const event = await client.inboxEvent.findUniqueOrThrow({ where: { id: eventId } });
+    if (promoted.count === 1) {
+      return { kind: 'ASSIGNED', event };
+    }
+    if (event.organizationId === organizationId) {
+      return { kind: 'UNCHANGED', event };
+    }
+    if (event.organizationId === null) {
+      return { kind: 'UNCHANGED', event };
+    }
+    return { kind: 'TENANT_CONFLICT', event };
   }
 
   async beginProcessing(
@@ -133,6 +179,31 @@ export class InboxService {
       },
     });
   }
+}
+
+async function findExistingInboxEvent(
+  client: EventWriteClient,
+  input: {
+    readonly scopeKey: string;
+    readonly source: string;
+    readonly externalEventId: string;
+  },
+): Promise<InboxEvent | null> {
+  if (isGloballyUniqueInboxSource(input.source)) {
+    return client.inboxEvent.findFirst({
+      where: { source: input.source, externalEventId: input.externalEventId },
+    });
+  }
+
+  return client.inboxEvent.findUnique({
+    where: {
+      scopeKey_source_externalEventId: {
+        scopeKey: input.scopeKey,
+        source: input.source,
+        externalEventId: input.externalEventId,
+      },
+    },
+  });
 }
 
 function isUniqueConstraintError(error: unknown): boolean {

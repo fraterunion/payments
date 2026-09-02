@@ -18,3 +18,10 @@ export interface InboxRetryOptions {
   readonly retryPolicy: RetryPolicy;
   readonly now?: Date;
 }
+
+export type InboxOrganizationAssignKind = 'ASSIGNED' | 'UNCHANGED' | 'TENANT_CONFLICT';
+
+export interface InboxOrganizationAssignResult {
+  readonly kind: InboxOrganizationAssignKind;
+  readonly event: InboxEvent;
+}

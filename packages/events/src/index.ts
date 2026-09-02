@@ -23,6 +23,8 @@ export type {
   ReceiveInboxInput,
   InboxReceiveResult,
   InboxRetryOptions,
+  InboxOrganizationAssignKind,
+  InboxOrganizationAssignResult,
 } from './inbox/inbox.types.js';
 export { EventHandlerRegistry } from './handlers/registry.js';
 export type { OutboxHandler } from './handlers/registry.js';
@@ -33,5 +35,7 @@ export {
   DEFAULT_RETRY_MAX_MS,
   DEFAULT_CLAIM_LEASE_MS,
   DEFAULT_RETRY_POLICY,
+  GLOBALLY_UNIQUE_INBOX_SOURCES,
+  isGloballyUniqueInboxSource,
 } from './types.js';
 export type { EventWriteClient, RetryPolicy, InboxReceiveKind } from './types.js';

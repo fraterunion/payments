@@ -578,10 +578,15 @@ model OutboxEvent {
 /// `(organizationId, source, externalEventId)` unique constraint would
 /// allow duplicate platform events because SQL `NULL != NULL`.
 ///
-/// The full inbound payload is not stored here — future provider-webhook
-/// infrastructure owns raw event storage. This row keeps a SHA-256 payload
-/// hash so a repeated identity with a different body is a conflict, not a
-/// silent duplicate.
+/// Stripe Event IDs are additionally globally unique: SQL-only partial
+/// unique index `inbox_events_stripe_external_event_uidx` on
+/// `(source, external_event_id) WHERE source = 'stripe'`. Prisma cannot
+/// declare partial unique indexes; see the
+/// `enforce_global_stripe_event_identity` migration and README.
+///
+/// `payload` is the verified inbound JSON object. `payloadHash` is the
+/// SHA-256 of canonical JSON so a repeated identity with a different body
+/// is a conflict, not a silent duplicate.
 model InboxEvent {
   id String @id @default(uuid(7)) @db.Uuid
 

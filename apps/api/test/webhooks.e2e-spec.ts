@@ -337,6 +337,86 @@ if (databaseUrl === undefined) {
       expect(row.payload).not.toEqual(JSON.parse(second));
     });
 
+    it('promotes an unresolved connected-account receipt after the account is bound', async () => {
+      const owner = await registerOwner();
+      const accountId = `acct_fup_test_${randomUUID().slice(0, 8)}`;
+      const eventId = `evt_fup_test_${randomUUID()}`;
+      const payload = stripeWebhookPayload({
+        id: eventId,
+        account: accountId,
+      });
+      const signature = signStripeWebhook(payload);
+
+      await postStripeWebhook(app.getHttpServer(), payload, signature).expect(200);
+      const unresolved = await db.inboxEvent.findFirstOrThrow({
+        where: { source: 'stripe', externalEventId: eventId },
+      });
+      expect(unresolved.organizationId).toBeNull();
+      expect(unresolved.scopeKey).toBe(PLATFORM_SCOPE_KEY);
+      const originalPayload = unresolved.payload;
+
+      await bindStripeAccount(owner.organizationId, accountId);
+      await postStripeWebhook(app.getHttpServer(), payload, signature).expect(200);
+
+      const rows = await db.inboxEvent.findMany({
+        where: { source: 'stripe', externalEventId: eventId },
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.id).toBe(unresolved.id);
+      expect(rows[0]?.organizationId).toBe(owner.organizationId);
+      expect(rows[0]?.scopeKey).toBe(owner.organizationId);
+      expect(rows[0]?.payload).toEqual(originalPayload);
+    });
+
+    it('does not downgrade a known tenant receipt when the account later cannot be resolved', async () => {
+      const owner = await registerOwner();
+      const accountId = `acct_fup_test_${randomUUID().slice(0, 8)}`;
+      const connectionId = await bindStripeAccount(owner.organizationId, accountId);
+      const eventId = `evt_fup_test_${randomUUID()}`;
+      const payload = stripeWebhookPayload({
+        id: eventId,
+        account: accountId,
+      });
+      const signature = signStripeWebhook(payload);
+
+      await postStripeWebhook(app.getHttpServer(), payload, signature).expect(200);
+      await db.providerAccountConnection.delete({ where: { id: connectionId } });
+      await postStripeWebhook(app.getHttpServer(), payload, signature).expect(200);
+
+      const rows = await db.inboxEvent.findMany({
+        where: { source: 'stripe', externalEventId: eventId },
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.organizationId).toBe(owner.organizationId);
+      expect(rows[0]?.scopeKey).toBe(owner.organizationId);
+    });
+
+    it('records a routing conflict instead of moving a Stripe event between tenants', async () => {
+      const first = await registerOwner();
+      const second = await registerOwner();
+      const accountId = `acct_fup_test_${randomUUID().slice(0, 8)}`;
+      const connectionId = await bindStripeAccount(first.organizationId, accountId);
+      const eventId = `evt_fup_test_${randomUUID()}`;
+      const payload = stripeWebhookPayload({
+        id: eventId,
+        account: accountId,
+      });
+      const signature = signStripeWebhook(payload);
+
+      await postStripeWebhook(app.getHttpServer(), payload, signature).expect(200);
+      await db.providerAccountConnection.delete({ where: { id: connectionId } });
+      await bindStripeAccount(second.organizationId, accountId);
+      const conflict = await postStripeWebhook(app.getHttpServer(), payload, signature).expect(200);
+      expect(conflict.body).toEqual({ received: true });
+
+      const rows = await db.inboxEvent.findMany({
+        where: { source: 'stripe', externalEventId: eventId },
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.organizationId).toBe(first.organizationId);
+      expect(rows[0]?.scopeKey).toBe(first.organizationId);
+    });
+
     it('does not persist invalid or tampered deliveries', async () => {
       const eventId = `evt_fup_test_${randomUUID()}`;
       const payload = stripeWebhookPayload({ id: eventId });

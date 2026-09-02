@@ -192,12 +192,50 @@ They are persisted as platform-scoped forensic receipts because:
 - later processing must not mutate tenant state until the account is
   bound
 
-If a Stripe event id already exists in the inbox under any scope,
-reingestion reuses that existing identity so an unknown→resolved race
-does not create a second tenant-scoped copy. A remaining theoretical
-race (two first deliveries resolving different scopes in the same
-instant) is accepted; uniqueness remains the generic inbox constraint
-`(scopeKey, source, externalEventId)`.
+A Stripe Event ID is provider identity. Tenant `scopeKey` is routing, not
+identity. PostgreSQL enforces:
+
+```text
+Generic Inbox identity:
+(scopeKey, source, externalEventId)
+
+Stripe additional invariant:
+(source='stripe', externalEventId) globally unique
+```
+
+via SQL-only partial unique index
+`inbox_events_stripe_external_event_uidx`. The same `evt_…` cannot exist
+as both a platform receipt and a tenant receipt.
+
+If a valid event arrives for `acct_X` before a
+`ProviderAccountConnection` exists, the first row may remain
+`organizationId = null` / `scopeKey = platform`. A later verified
+delivery of the **same** Event ID that resolves confidently to
+organization A updates that row in place:
+
+```text
+organizationId: null → org-A
+scopeKey: platform → org-A UUID
+```
+
+The verified JSON payload and `payloadHash` are never replaced. Known
+tenant association is never downgraded back to platform. An anomalous
+delivery that would move the row from organization A to organization B
+is a routing conflict (`STRIPE_WEBHOOK_TENANT_CONFLICT` in logs): HTTP
+still returns `2xx`, no second row is inserted, and the original
+organization is retained.
+
+### Commit 18 processing identity
+
+Every Stripe Event ID exists at most once in `InboxEvent`. Processors may
+use `InboxEvent.id` or `(source, externalEventId)` as durable
+event-processing identity.
+
+Tenant resolution is persisted on `InboxEvent` when it is known at ingest
+or when a later verified duplicate delivery can promote unresolved →
+known. Processors may still re-resolve `event.account` →
+`ProviderAccountConnection` as a defense. They must not treat a second
+inbox row as a second Stripe event.
 
 ## Durable Inbox mapping
 
@@ -251,8 +289,9 @@ Stripe retries. Duplicate delivery of the same Event ID is normal.
 | `DUPLICATE`  | `200 { received: true }` | original row unchanged    |
 | `CONFLICT`   | `200 { received: true }` | original payload retained |
 
-Conflict (same Event ID, different canonical payload hash) is anomalous.
-The original row stays authoritative. The second payload is not trusted
+Conflict (same Event ID, different canonical payload hash) is anomalous
+and is detected **globally** for Stripe, regardless of `scopeKey`. The
+original row stays authoritative. The second payload is not trusted
 and is not stored. The endpoint still returns `2xx` so Stripe does not
 retry forever a condition redelivery cannot fix. The API logs a warning
 with safe identifiers only (`eventId`, `eventType`, `livemode`, outcome).
@@ -331,8 +370,9 @@ Secrets live in config, not the database.
 
 ```text
 verify outside DB
-resolve provider account
-receive inbox event (insert or detect duplicate/conflict)
+resolve provider account from event.account only
+receive inbox event (insert or detect duplicate/conflict globally for stripe)
+if this delivery resolved a tenant, promote an unresolved platform row in place
 return 2xx
 ```
 
@@ -349,8 +389,11 @@ Webhook receipt does **not** enqueue `OutboxEvent`.
 ## Logging
 
 Allowed: `requestId`, `provider=stripe`, `eventId` after verification,
-`eventType`, `NEW`/`DUPLICATE`/`CONFLICT`, resolved `organizationId`,
-`connectionId`, `livemode`, `unresolvedAccount`.
+`eventType`, `NEW`/`DUPLICATE`/`CONFLICT`, routing
+`assigned`/`unchanged`/`tenant_conflict`, resolved `organizationId`,
+`attemptedOrganizationId` on tenant conflict, `connectionId`,
+`livemode`, `unresolvedAccount`, and `STRIPE_WEBHOOK_TENANT_CONFLICT`
+as a log `errorCode` (not an HTTP error).
 
 Never: raw body, `Stripe-Signature`, `whsec_…`, full event object,
 customer email, payment method, `client_secret`, KYC, onboarding URLs,

@@ -198,9 +198,21 @@ Financial-command idempotency was hardened in
 `IN_PROGRESS` / `COMPLETED` (existing rows backfilled `COMPLETED`),
 `updated_at`, scope/resource-type shape CHECKs, and a status index.
 Existing `payment.create` / `refund.create` key hashes and fingerprints
-were not rewritten. New migration timestamps must sort after the latest
-already-committed migration (`20260902180000` at the time of that
-commit).
+were not rewritten. Inbox payload storage for verified inbound JSON was
+added in `add_inbox_event_payload` (timestamp `20260902200000`). Global
+Stripe Event ID uniqueness — SQL-only partial unique index
+`inbox_events_stripe_external_event_uidx` on
+`(source, external_event_id) WHERE source = 'stripe'` — was added in
+`enforce_global_stripe_event_identity` (timestamp `20260902210000`).
+Prisma cannot declare partial unique indexes in `schema.prisma`; the
+generic `(scopeKey, source, externalEventId)` unique constraint remains
+for all sources. The migration fails with a clear exception if duplicate
+Stripe event IDs already exist across scopes; it never deletes or merges
+inbox rows. `prisma migrate diff --from-config-datasource --to-schema`
+does not propose dropping this index (Prisma does not model partial
+unique indexes; extra SQL-only indexes stay in the database), matching
+the `users_email_lower_uidx` precedent. New migration timestamps
+must sort after the latest already-committed migration.
 
 Before committing a migration:
 
@@ -347,9 +359,12 @@ Indexes were added for known query shapes, not speculatively:
   `(status, claimExpiresAt)` for expired-lease recovery, plus
   `organizationId`, `eventType`, `(aggregateType, aggregateId)`, and
   `createdAt`.
-- `InboxEvent`: unique `(scopeKey, source, externalEventId)` for
-  deduplication, plus `organizationId`, `status`, `eventType`,
-  `receivedAt`, and `processedAt`.
+- `InboxEvent`: unique `(scopeKey, source, externalEventId)` for generic
+  deduplication, plus SQL-only partial unique
+  `inbox_events_stripe_external_event_uidx` on
+  `(source, external_event_id) WHERE source = 'stripe'`. Also
+  `organizationId`, `status`, `eventType`, `receivedAt`, and
+  `processedAt`.
 - `Customer`: `(organizationId, status, createdAt)` and
   `(organizationId, createdAt)` for list/cursor, `(organizationId, email)`
   for tenant-scoped search, unique `(id, organizationId)` for the mapping
@@ -386,7 +401,9 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
   `(ApiKey.organizationId, keyPrefix)`, `ApiKey.secretHash`,
   `Session.tokenHash`, `Session.createdBySessionId`,
   `UserCredential.userId`,
-  `(InboxEvent.scopeKey, source, externalEventId)`,
+  `(InboxEvent.scopeKey, source, externalEventId)`, plus Stripe-only
+  partial unique `inbox_events_stripe_external_event_uidx`
+  (`source = 'stripe'`, `external_event_id`),
   `(Customer.organizationId, externalReference)`,
   `(Customer.id, organizationId)`,
   mapping provider-identity and customer/provider-scope uniques.

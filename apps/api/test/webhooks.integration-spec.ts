@@ -284,5 +284,38 @@ if (databaseUrl === undefined) {
         }),
       ).toBe(inboxBefore + 1);
     });
+
+    it('deduplicates concurrent unknown and known-account resolution of the same Stripe event', async () => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const { organizationId } = await registerOrg();
+        const accountId = `acct_fup_test_${randomUUID().slice(0, 8)}`;
+        const eventId = `evt_fup_test_${randomUUID()}`;
+        const payload = stripeWebhookPayload({
+          id: eventId,
+          account: accountId,
+        });
+        const signature = signStripeWebhook(payload);
+
+        const responses = await Promise.all([
+          postStripeWebhook(app.getHttpServer(), payload, signature),
+          bindStripeAccount(organizationId, accountId).then(() =>
+            postStripeWebhook(app.getHttpServer(), payload, signature),
+          ),
+        ]);
+        for (const response of responses) {
+          expect(response.status).toBe(200);
+          expect(response.body).toEqual({ received: true });
+          expect(JSON.stringify(response.body)).not.toMatch(/P2002|Unique constraint/i);
+        }
+
+        const rows = await db.inboxEvent.findMany({
+          where: { source: 'stripe', externalEventId: eventId },
+        });
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.organizationId).toBe(organizationId);
+        expect(rows[0]?.scopeKey).toBe(organizationId);
+        expect(rows[0]?.payload).toEqual(JSON.parse(payload));
+      }
+    });
   },
 );

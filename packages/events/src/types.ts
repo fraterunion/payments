@@ -23,3 +23,13 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
 };
 
 export type InboxReceiveKind = 'NEW' | 'DUPLICATE' | 'CONFLICT';
+
+/**
+ * Sources whose `externalEventId` is unique regardless of `scopeKey`.
+ * Stripe Event IDs (`evt_…`) are provider identity; tenant scope is routing.
+ */
+export const GLOBALLY_UNIQUE_INBOX_SOURCES: ReadonlySet<string> = new Set(['stripe']);
+
+export function isGloballyUniqueInboxSource(source: string): boolean {
+  return GLOBALLY_UNIQUE_INBOX_SOURCES.has(source);
+}
