@@ -1,12 +1,73 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { config as loadDotenv } from 'dotenv';
+import { createPrismaClient } from '@fraterunion-payments/database';
+import { EventHandlerRegistry, OutboxService } from '@fraterunion-payments/events';
+import { loadWorkerEnvironment, WorkerEnvironmentValidationError } from './config/environment.js';
+import { createWorkerLogger } from './logger.js';
+import { OutboxWorker } from './outbox-worker.js';
 import { registerShutdownHandlers } from './shutdown.js';
 
-function bootstrap(): void {
-  console.log('FraterUnion Payments worker started');
-
-  registerShutdownHandlers(process, (signal) => {
-    console.log(`Received ${signal}, shutting down gracefully`);
-    process.exit(0);
-  });
+for (const candidate of [
+  resolve(process.cwd(), '.env'),
+  resolve(process.cwd(), 'packages/database/.env'),
+  resolve(process.cwd(), '../../packages/database/.env'),
+]) {
+  if (existsSync(candidate)) {
+    loadDotenv({ path: candidate, override: false });
+    break;
+  }
 }
 
-bootstrap();
+async function bootstrap(): Promise<void> {
+  const environment = loadWorkerEnvironment(process.env);
+  const workerId = `worker-${randomUUID()}`;
+  const logger = createWorkerLogger(environment, workerId);
+  const database = createPrismaClient({ connectionString: environment.databaseUrl });
+
+  await database.$connect();
+  await database.$queryRaw`SELECT 1`;
+  logger.info('Database connection established');
+
+  const registry = new EventHandlerRegistry();
+  const worker = new OutboxWorker({
+    database,
+    outbox: new OutboxService(),
+    registry,
+    environment,
+    logger,
+    workerId,
+  });
+
+  let shuttingDown = false;
+  const shutdown = async (signal: 'SIGTERM' | 'SIGINT'): Promise<void> => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    logger.info({ signal }, 'Received shutdown signal');
+    try {
+      await worker.stop();
+    } finally {
+      await database.$disconnect();
+      logger.info('Database connection closed');
+    }
+    process.exit(0);
+  };
+
+  registerShutdownHandlers(process, (signal) => {
+    void shutdown(signal);
+  });
+
+  await worker.start();
+}
+
+bootstrap().catch((error: unknown) => {
+  if (error instanceof WorkerEnvironmentValidationError) {
+    console.error(error.message);
+  } else {
+    console.error(error);
+  }
+  process.exit(1);
+});

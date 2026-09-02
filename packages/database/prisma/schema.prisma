@@ -75,6 +75,24 @@ enum ApiEnvironment {
   @@map("api_environment")
 }
 
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+
+  @@map("outbox_event_status")
+}
+
+enum InboxEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+
+  @@map("inbox_event_status")
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -113,9 +131,11 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  memberships OrganizationMembership[]
-  apiKeys     ApiKey[]
-  auditLogs   AuditLog[]
+  memberships  OrganizationMembership[]
+  apiKeys      ApiKey[]
+  auditLogs    AuditLog[]
+  outboxEvents OutboxEvent[]
+  inboxEvents  InboxEvent[]
 
   @@index([status])
   @@index([type])
@@ -378,4 +398,105 @@ model AuditLog {
   @@index([requestId])
   @@index([action])
   @@map("audit_logs")
+}
+
+/// Durable transactional outbox (ADR-007). A business mutation and an
+/// outbox insert share one PostgreSQL transaction; workers claim rows only
+/// after commit. Delivery is at-least-once. `organizationId` is nullable so
+/// genuine platform/system events are not faked onto a tenant. Failed rows
+/// are retained as the dead-letter state — they are never deleted here.
+///
+/// Prisma cannot express the CHECK constraints that keep status and claim
+/// fields consistent; those live in the `add_transactional_outbox_and_inbox`
+/// migration SQL.
+model OutboxEvent {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Null only for genuine platform/system events. Tenant-owned events must
+  /// set this explicitly (ADR-003).
+  organizationId String? @map("organization_id") @db.Uuid
+
+  eventType     String  @map("event_type") @db.VarChar(128)
+  aggregateType String? @map("aggregate_type") @db.VarChar(128)
+  aggregateId   String? @map("aggregate_id") @db.VarChar(128)
+
+  /// Immutable event data. Must never contain secrets, credentials, or
+  /// card data (see docs/architecture/event-delivery.md).
+  payload  Json
+  metadata Json @default("{}")
+
+  correlationId String? @map("correlation_id") @db.VarChar(128)
+  causationId   String? @map("causation_id") @db.VarChar(128)
+
+  status       OutboxEventStatus @default(PENDING)
+  attemptCount Int               @default(0) @map("attempt_count")
+  availableAt  DateTime          @default(now()) @map("available_at") @db.Timestamptz(3)
+
+  claimedAt      DateTime? @map("claimed_at") @db.Timestamptz(3)
+  claimExpiresAt DateTime? @map("claim_expires_at") @db.Timestamptz(3)
+  claimedBy      String?   @map("claimed_by") @db.VarChar(128)
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz(3)
+
+  lastErrorCode    String? @map("last_error_code") @db.VarChar(64)
+  lastErrorMessage String? @map("last_error_message") @db.VarChar(512)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([status, availableAt])
+  @@index([status, claimExpiresAt])
+  @@index([organizationId])
+  @@index([eventType])
+  @@index([aggregateType, aggregateId])
+  @@index([createdAt])
+  @@map("outbox_events")
+}
+
+/// Durable inbox for at-least-once inbound events (ADR-007). Deduplicates
+/// on `(scopeKey, source, externalEventId)`. `scopeKey` is a non-null
+/// ownership discriminator: the organization UUID for tenant events, or
+/// the literal `platform` for system/global events. A nullable
+/// `(organizationId, source, externalEventId)` unique constraint would
+/// allow duplicate platform events because SQL `NULL != NULL`.
+///
+/// The full inbound payload is not stored here — future provider-webhook
+/// infrastructure owns raw event storage. This row keeps a SHA-256 payload
+/// hash so a repeated identity with a different body is a conflict, not a
+/// silent duplicate.
+model InboxEvent {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  organizationId String? @map("organization_id") @db.Uuid
+  /// Non-null identity scope. Always `organizationId` when present, else
+  /// `platform`. Enforced by a CHECK constraint in migration SQL.
+  scopeKey       String  @map("scope_key") @db.VarChar(64)
+
+  source          String @db.VarChar(128)
+  externalEventId String @map("external_event_id") @db.VarChar(256)
+  eventType       String @map("event_type") @db.VarChar(128)
+  payloadHash     String @map("payload_hash") @db.VarChar(64)
+
+  status       InboxEventStatus @default(RECEIVED)
+  attemptCount Int              @default(0) @map("attempt_count")
+
+  receivedAt          DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  processingStartedAt DateTime? @map("processing_started_at") @db.Timestamptz(3)
+  processedAt         DateTime? @map("processed_at") @db.Timestamptz(3)
+  lastErrorCode       String?   @map("last_error_code") @db.VarChar(64)
+  lastErrorMessage    String?   @map("last_error_message") @db.VarChar(512)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([scopeKey, source, externalEventId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([eventType])
+  @@index([receivedAt])
+  @@index([processedAt])
+  @@map("inbox_events")
 }

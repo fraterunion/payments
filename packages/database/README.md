@@ -5,7 +5,8 @@
 This package owns the PostgreSQL schema and Prisma client for FraterUnion
 Payments. This package establishes the Prisma/PostgreSQL foundation and the
 core multi-tenant identity schema: organizations, users, user credentials,
-memberships, API keys, sessions, and the audit log. It intentionally does
+memberships, API keys, sessions, the audit log, and the transactional
+outbox / durable inbox tables. It intentionally does
 not include payment, customer, ledger, webhook, or provider entities — see
 [`../../docs/decisions/ADR-002-postgresql-and-prisma.md`](../../docs/decisions/ADR-002-postgresql-and-prisma.md)
 and
@@ -169,7 +170,10 @@ unique index on `LOWER(users.email)` — was added in
 indexes in `schema.prisma`, so that invariant is maintained in the
 migration SQL. The Prisma `@unique` on `User.email` is retained so
 `findUnique` / `upsert` still resolve by the canonical value the
-application always writes.
+application always writes. Transactional outbox and inbox tables were
+added in `add_transactional_outbox_and_inbox`, including CHECK
+constraints Prisma cannot declare (processed timestamp, claim fields,
+non-empty identity strings, and inbox `scopeKey` consistency).
 
 Before committing a migration:
 
@@ -258,6 +262,8 @@ revoking an API key may destroy audit history.** Concretely:
 | `AuditLog.organization` → `Organization`               | `Restrict` | Audit history is tied to a tenant that must exist.                                                          |
 | `AuditLog.actorUser` → `User`                          | `SetNull`  | Deleting or deactivating a user must never delete the audit events they caused.                             |
 | `AuditLog.actorApiKey` → `ApiKey`                      | `SetNull`  | Same rationale, for API-key actors.                                                                         |
+| `OutboxEvent.organization` → `Organization`            | `Restrict` | Tenant-owned events keep their organization; platform events have a null `organizationId`.                  |
+| `InboxEvent.organization` → `Organization`             | `Restrict` | Same rationale as the outbox.                                                                               |
 
 No relation cascades into `AuditLog` or deletes `Organization`/`ApiKey`
 rows as a side effect of an unrelated deletion. Soft-delete fields were not
@@ -291,6 +297,13 @@ Indexes were added for known query shapes, not speculatively:
   recent activity" query, `(resourceType, resourceId)` for resource
   lookup, `actorUserId`, `actorApiKeyId`, `requestId`, and `action` — one
   index per way the audit log is expected to be queried.
+- `OutboxEvent`: `(status, availableAt)` for the claim queue,
+  `(status, claimExpiresAt)` for expired-lease recovery, plus
+  `organizationId`, `eventType`, `(aggregateType, aggregateId)`, and
+  `createdAt`.
+- `InboxEvent`: unique `(scopeKey, source, externalEventId)` for
+  deduplication, plus `organizationId`, `status`, `eventType`,
+  `receivedAt`, and `processedAt`.
 
 ## Database-enforced vs. application-enforced validation
 
@@ -305,7 +318,13 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
   `(OrganizationMembership.organizationId, userId)`,
   `(ApiKey.organizationId, keyPrefix)`, `ApiKey.secretHash`,
   `Session.tokenHash`, `Session.createdBySessionId`,
-  `UserCredential.userId`.
+  `UserCredential.userId`,
+  `(InboxEvent.scopeKey, source, externalEventId)`.
+- Outbox/inbox CHECK constraints in
+  `add_transactional_outbox_and_inbox`: non-negative `attemptCount`,
+  non-empty event/source identity, `PROCESSED` requires `processedAt`,
+  outbox `PROCESSING` requires claim fields, inbox `scopeKey` is either
+  `'platform'` (null organization) or the organization UUID text.
 - `NOT NULL` / nullability exactly as declared in the schema.
 - Enum value membership (PostgreSQL enum types).
 - `ON DELETE`/`ON UPDATE` behavior described above.
@@ -372,6 +391,12 @@ value by exact match.
   plaintext credentials, session/API-key material, or raw card data —
   this is an application-layer discipline this schema cannot enforce by
   itself; treat it as a hard rule.
+- **Outbox / inbox:** `OutboxEvent.payload` and `metadata` must never
+  contain secrets, tokens, provider credentials, or card data. Inbox
+  rows store only a SHA-256 payload hash, not the inbound body.
+  `lastErrorMessage` columns are bounded operational summaries, not stack
+  traces. See
+  [`docs/architecture/event-delivery.md`](../../docs/architecture/event-delivery.md).
 - **No plaintext secrets, ever**, in this schema, its migrations, its
   seed data, or example `.env` values committed to this repository.
 
@@ -381,6 +406,9 @@ value by exact match.
   PostgreSQL and Prisma as the transactional datastore.
 - [ADR-003](../../docs/decisions/ADR-003-multi-tenant-organization-model.md)
   — the tenancy model this schema implements.
+- [ADR-007](../../docs/decisions/ADR-007-transactional-outbox-and-inbox.md)
+  — transactional outbox and durable inbox; see
+  [`docs/architecture/event-delivery.md`](../../docs/architecture/event-delivery.md).
 - [ADR-005](../../docs/decisions/ADR-005-no-raw-card-data.md) — why this
   package will never contain card-data fields.
 - [ADR-009](../../docs/decisions/ADR-009-integer-minor-units-for-money.md)

@@ -3,9 +3,10 @@
 ## Status
 
 Authoritative. Describes the intended system context and deployment model
-for FraterUnion Payments. The monorepo currently contains only scaffolding
-(see the root [`README.md`](../../README.md)); this document defines the
-target shape that implementation commits build toward.
+for FraterUnion Payments. The monorepo currently implements tenancy, authentication, and the
+outbox/inbox substrate (see the root [`README.md`](../../README.md));
+this document still defines the broader target shape later commits
+build toward.
 
 Last updated: 2026-08-06
 
@@ -29,12 +30,16 @@ Last updated: 2026-08-06
   reconciliation, provider connections).
 - **FraterUnion Payments API** — the NestJS application exposing the
   versioned REST API consumer products and the Admin app use.
-- **Worker** — the standalone Node.js process responsible for
-  asynchronous work: webhook processing, retries, and (later) billing
+- **Worker** — the standalone Node.js process that polls the
+  transactional outbox in PostgreSQL, claims work with
+  `FOR UPDATE SKIP LOCKED`, and dispatches registered handlers. Future
+  commits will add inbox-driven webhook processing and billing
   scheduling.
-- **PostgreSQL** — the system of record for domain and ledger data.
-- **Redis or future queue infrastructure** — intended backing store for
-  durable queues/locks used by the worker; not yet implemented.
+- **PostgreSQL** — the system of record for domain and ledger data, and
+  the durable store for the transactional outbox and inbox (ADR-007).
+- **Redis or future queue infrastructure** — not used for outbox/inbox
+  delivery; reserved for later lock or cache needs if operational load
+  requires it.
 - **External payment providers** — Stripe initially; additional providers
   are a future, evaluated decision (see
   [`../product/vision.md`](../product/vision.md)).

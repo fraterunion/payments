@@ -12,6 +12,15 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@fraterunion-payments/config": "workspace:*",
+    "@fraterunion-payments/database": "workspace:*",
+    "@fraterunion-payments/events": "workspace:*",
+    "dotenv": "catalog:",
+    "pino": "catalog:",
+    "pino-pretty": "catalog:",
+    "zod": "catalog:"
+  },
   "devDependencies": {
     "@fraterunion-payments/eslint-config": "workspace:*",
     "@fraterunion-payments/typescript-config": "workspace:*",

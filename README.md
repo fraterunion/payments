@@ -14,24 +14,25 @@ processor itself.
 
 ## Repository status
 
-This repository currently contains **only the monorepo foundation**: the
-workspace layout, shared tooling, and minimal, non-functional applications
-and packages. No business logic, authentication, database schema, payment
-provider integration, or webhook handling has been implemented yet. Treat
-everything here as scaffolding for the commits that follow.
+The monorepo foundation, core tenancy schema, authentication and
+organization access control, and the transactional outbox / durable inbox
+substrate are in place. Payment processing, provider adapters, ledger
+posting, reconciliation, billing, and outbound organization webhooks are
+not implemented yet.
 
 ## Monorepo structure
 
 ```text
 apps/
-  api/      NestJS API (minimal, no business modules yet)
+  api/      NestJS API (auth and tenancy; no payment modules yet)
   admin/    Next.js App Router admin console
   docs/     Next.js App Router developer documentation site
-  worker/   Standalone Node.js worker with graceful shutdown handling
+  worker/   Outbox worker (PostgreSQL poll, claim, dispatch)
 
 packages/
-  config/               Future environment/config utilities
-  database/             PostgreSQL/Prisma schema and client (core tenancy)
+  config/               Shared environment/config utilities
+  database/             PostgreSQL/Prisma schema and client
+  events/               Transactional outbox and durable inbox
   eslint-config/        Shared ESLint flat configs (base, next, node)
   payment-core/         Future provider-independent payment domain logic
   provider-contracts/   Future payment-provider interfaces
@@ -63,6 +64,8 @@ implementation must follow them, not the other way around.
 - [Security boundaries](docs/architecture/security-boundaries.md) — the
   card-data boundary, secret handling, multi-tenancy, webhooks, and threat
   model.
+- [Event delivery](docs/architecture/event-delivery.md) — transactional
+  outbox, durable inbox, at-least-once semantics, and the outbox worker.
 - [Payment lifecycle](docs/architecture/payment-lifecycle.md) — the
   normalized payment state machine and failure/refund handling.
 - [Subscription lifecycle](docs/architecture/subscription-lifecycle.md) —
@@ -114,8 +117,10 @@ pnpm db:studio          # open Prisma Studio
 ## API
 
 The NestJS API's infrastructure (configuration, health checks, database
-lifecycle, logging, error handling) is documented in
-[`apps/api`](apps/api/README.md).
+lifecycle, logging, error handling, authentication) is documented in
+[`apps/api`](apps/api/README.md). The outbox worker is documented in
+[`apps/worker`](apps/worker/README.md). Event APIs live in
+[`packages/events`](packages/events/README.md).
 
 ```bash
 pnpm dev:api                   # start the API in watch mode
@@ -147,7 +152,8 @@ via commitlint, and a pre-commit hook runs Prettier/ESLint on staged files only.
 | Admin | http://localhost:3000 |
 | Docs  | http://localhost:3001 |
 
-The worker process does not expose an HTTP port in this commit.
+The worker process does not expose an HTTP port. It polls PostgreSQL
+for outbox work; see [`apps/worker`](apps/worker/README.md).
 
 ## Contribution conventions
 
