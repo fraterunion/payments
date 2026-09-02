@@ -1,7 +1,4 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { config as loadDotenv } from 'dotenv';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import type { PrismaClient } from '@fraterunion-payments/database';
@@ -14,22 +11,12 @@ import { AuditService } from '../src/audit/audit.service';
 import { AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../src/audit/audit.types';
 import { CustomerProviderMappingsService } from '../src/customers/customer-provider-mappings.service';
 import { CustomersService } from '../src/customers/customers.service';
-import { deleteTenantsForTests } from './support/immutable-audit-cleanup';
+import { deleteTenantsForTests, teardownRealPgSuite } from './support/immutable-audit-cleanup';
+import { resolveDatabaseUrl } from './support/test-database-url';
 import { createTestEnvironment } from './support/test-environment';
+import { testEmail, testSlug } from './support/test-ownership';
 
-if (process.env['DATABASE_URL'] === undefined) {
-  for (const candidate of [
-    resolve(__dirname, '../../../packages/database/.env'),
-    resolve(process.cwd(), '../../packages/database/.env'),
-  ]) {
-    if (existsSync(candidate)) {
-      loadDotenv({ path: candidate });
-      break;
-    }
-  }
-}
-
-const databaseUrl = process.env['DATABASE_URL'];
+const databaseUrl = resolveDatabaseUrl();
 
 if (databaseUrl === undefined) {
   console.warn(
@@ -65,15 +52,16 @@ if (databaseUrl === undefined) {
       customers = app.get(CustomersService);
       mappings = app.get(CustomerProviderMappingsService);
       audit = app.get(AuditService);
+      await deleteTenantsForTests(db);
     });
 
     afterAll(async () => {
-      if (db !== undefined) {
-        await deleteTenantsForTests(db, [...createdOrgIds], [...createdUserIds]);
-      }
-      if (app !== undefined) {
-        await app.close();
-      }
+      await teardownRealPgSuite({
+        app,
+        db,
+        organizationIds: [...createdOrgIds],
+        userIds: [...createdUserIds],
+      });
     });
 
     async function registerOrg(): Promise<{
@@ -85,10 +73,10 @@ if (databaseUrl === undefined) {
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/register')
         .send({
-          email: `owner-${suffix}@example.com`,
+          email: testEmail(`owner-${suffix}`),
           password: `a sufficiently long passphrase ${suffix}`,
           organizationName: `Org ${suffix}`,
-          organizationSlug: `org-${suffix}`,
+          organizationSlug: testSlug(`org-${suffix}`),
           defaultCurrency: 'USD',
           countryCode: 'US',
           timezone: 'America/New_York',
@@ -108,15 +96,15 @@ if (databaseUrl === undefined) {
     it('creates customers, canonicalizes email, and allows duplicate emails', async () => {
       const { organizationId } = await registerOrg();
       const first = await customers.create(
-        { organizationId, email: '  Ada@Example.COM  ', name: 'Ada' },
+        { organizationId, email: '  Ada@Fup.TEST  ', name: 'Ada' },
         actor,
       );
       const second = await customers.create(
-        { organizationId, email: 'ada@example.com', name: 'Ada Two' },
+        { organizationId, email: 'ada@fup.test', name: 'Ada Two' },
         actor,
       );
-      expect(first.email).toBe('ada@example.com');
-      expect(second.email).toBe('ada@example.com');
+      expect(first.email).toBe('ada@fup.test');
+      expect(second.email).toBe('ada@fup.test');
       expect(first.id).not.toBe(second.id);
     });
 
@@ -362,7 +350,7 @@ if (databaseUrl === undefined) {
     it('stores only safe identifiers in audit metadata', async () => {
       const { organizationId } = await registerOrg();
       const created = await customers.create(
-        { organizationId, email: 'pii@example.com', phone: '+15551234567', name: 'PII' },
+        { organizationId, email: 'pii@fup.test', phone: '+15551234567', name: 'PII' },
         actor,
       );
       const row = await db.auditLog.findFirstOrThrow({
@@ -371,7 +359,7 @@ if (databaseUrl === undefined) {
       const metadata = row.metadata as Record<string, unknown>;
       expect(metadata['hasEmail']).toBe(true);
       expect(metadata['hasPhone']).toBe(true);
-      expect(JSON.stringify(metadata)).not.toContain('pii@example.com');
+      expect(JSON.stringify(metadata)).not.toContain('pii@fup.test');
       expect(JSON.stringify(metadata)).not.toContain('+15551234567');
       expect(JSON.stringify(metadata)).not.toContain('PII');
     });

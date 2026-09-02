@@ -7,10 +7,12 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { AppConfigService } from '../src/config/app-config.service';
 import { DatabaseService } from '../src/database/database.service';
-import { deleteTenantsForTests } from './support/immutable-audit-cleanup';
+import { deleteTenantsForTests, teardownRealPgSuite } from './support/immutable-audit-cleanup';
+import { resolveDatabaseUrl } from './support/test-database-url';
 import { createTestEnvironment } from './support/test-environment';
+import { testEmail, testSlug } from './support/test-ownership';
 
-const databaseUrl = process.env['DATABASE_URL'];
+const databaseUrl = resolveDatabaseUrl();
 
 if (databaseUrl === undefined) {
   console.warn(
@@ -52,14 +54,16 @@ interface RegisteredFixture {
     await app.init();
 
     db = app.get(DatabaseService).getClient();
+    await deleteTenantsForTests(db);
   });
 
   afterAll(async () => {
-    // Audit rows are immutable. Test cleanup is the only place that
-    // disables user triggers — never production code.
-    await deleteTenantsForTests(db, [...createdOrgIds], [...createdUserIds]);
-
-    await app.close();
+    await teardownRealPgSuite({
+      app,
+      db,
+      organizationIds: [...createdOrgIds],
+      userIds: [...createdUserIds],
+    });
   });
 
   function uniqueSuffix(): string {
@@ -70,9 +74,9 @@ interface RegisteredFixture {
     overrides: Partial<Record<string, unknown>> = {},
   ): Promise<RegisteredFixture> {
     const suffix = uniqueSuffix();
-    const email = `owner-${suffix}@example.com`;
+    const email = testEmail(`owner-${suffix}`);
     const password = `a sufficiently long passphrase ${suffix}`;
-    const organizationSlug = `acme-${suffix}`;
+    const organizationSlug = testSlug(`acme-${suffix}`);
 
     const response = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
@@ -187,7 +191,7 @@ interface RegisteredFixture {
           email: fixture.email,
           password: 'a completely different passphrase',
           organizationName: 'Another Org',
-          organizationSlug: `another-${uniqueSuffix()}`,
+          organizationSlug: testSlug(`another-${uniqueSuffix()}`),
           defaultCurrency: 'USD',
           countryCode: 'US',
           timezone: 'America/New_York',
@@ -201,7 +205,7 @@ interface RegisteredFixture {
       await request(app.getHttpServer())
         .post('/api/v1/auth/register')
         .send({
-          email: `someone-else-${uniqueSuffix()}@example.com`,
+          email: testEmail(`someone-else-${uniqueSuffix()}`),
           password: 'a completely different passphrase',
           organizationName: 'Another Org',
           organizationSlug: fixture.organizationSlug,
@@ -214,7 +218,7 @@ interface RegisteredFixture {
 
     it('canonicalizes email casing and whitespace consistently between register and login', async () => {
       const suffix = uniqueSuffix();
-      const rawEmail = `  MixedCase-${suffix}@Example.COM  `;
+      const rawEmail = `  MixedCase-${suffix}@Fup.TEST  `;
       const password = 'a sufficiently long passphrase for canon test';
 
       const registerResponse = await request(app.getHttpServer())
@@ -223,7 +227,7 @@ interface RegisteredFixture {
           email: rawEmail,
           password,
           organizationName: 'Canon Org',
-          organizationSlug: `canon-${suffix}`,
+          organizationSlug: testSlug(`canon-${suffix}`),
           defaultCurrency: 'USD',
           countryCode: 'US',
           timezone: 'America/New_York',
@@ -233,11 +237,11 @@ interface RegisteredFixture {
       createdUserIds.add(registerResponse.body.user.id);
       createdOrgIds.add(registerResponse.body.organization.id);
 
-      expect(registerResponse.body.user.email).toBe(`mixedcase-${suffix}@example.com`);
+      expect(registerResponse.body.user.email).toBe(testEmail(`mixedcase-${suffix}`));
 
       await request(app.getHttpServer())
         .post('/api/v1/auth/login')
-        .send({ email: `  MIXEDCASE-${suffix}@EXAMPLE.com  `, password })
+        .send({ email: `  MIXEDCASE-${suffix}@FUP.TEST  `, password })
         .expect(200);
     });
 
@@ -247,10 +251,10 @@ interface RegisteredFixture {
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/register')
         .send({
-          email: fixture.email.replace('owner-', 'Owner-').replace('@example.com', '@Example.com'),
+          email: fixture.email.replace('owner-', 'Owner-').replace('@fup.test', '@Fup.TEST'),
           password: 'a completely different passphrase',
           organizationName: 'Another Org',
-          organizationSlug: `another-${uniqueSuffix()}`,
+          organizationSlug: testSlug(`another-${uniqueSuffix()}`),
           defaultCurrency: 'USD',
           countryCode: 'US',
           timezone: 'America/New_York',
@@ -279,14 +283,14 @@ interface RegisteredFixture {
 
     it('rejects case-variant and exact duplicate inserts without mutating the original user', async () => {
       const suffix = uniqueSuffix();
-      const canonical = `db-owner-${suffix}@example.com`;
+      const canonical = testEmail(`db-owner-${suffix}`);
       const original = await db.user.create({
         data: { email: canonical, status: 'ACTIVE', displayName: 'Original Owner' },
       });
       createdUserIds.add(original.id);
 
       await expect(
-        db.user.create({ data: { email: `DB-Owner-${suffix}@Example.com`, status: 'ACTIVE' } }),
+        db.user.create({ data: { email: `DB-Owner-${suffix}@Fup.TEST`, status: 'ACTIVE' } }),
       ).rejects.toMatchObject({ code: 'P2002' });
 
       await expect(
@@ -294,7 +298,7 @@ interface RegisteredFixture {
       ).rejects.toMatchObject({ code: 'P2002' });
 
       const other = await db.user.create({
-        data: { email: `db-other-${suffix}@example.com`, status: 'ACTIVE' },
+        data: { email: testEmail(`db-other-${suffix}`), status: 'ACTIVE' },
       });
       createdUserIds.add(other.id);
 
@@ -341,7 +345,7 @@ interface RegisteredFixture {
       const response = await request(app.getHttpServer())
         .post('/api/v1/auth/login')
         .send({
-          email: `nobody-${uniqueSuffix()}@example.com`,
+          email: testEmail(`nobody-${uniqueSuffix()}`),
           password: 'whatever-password-value',
         })
         .expect(401);

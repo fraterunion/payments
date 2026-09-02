@@ -4,9 +4,10 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { AppConfigService } from '../src/config/app-config.service';
+import { resolveDatabaseUrl } from './support/test-database-url';
 import { createTestEnvironment } from './support/test-environment';
 
-const databaseUrl = process.env['DATABASE_URL'];
+const databaseUrl = resolveDatabaseUrl();
 
 if (databaseUrl === undefined) {
   console.warn(

@@ -338,10 +338,15 @@ pnpm test:api:auth:integration # real PostgreSQL auth suite — requires DATABAS
   `DEVELOPER`-cannot-create-`LIVE`-keys policy and cross-org revoke
   safety), audit-record persistence, and a direct check that no plaintext
   password, refresh token, or API-key secret is ever persisted anywhere.
-  Test data is created with unique, clearly-fictional identifiers and
-  cleaned up in `afterAll` by a test-only helper that temporarily
-  disables user triggers on `audit_logs` (production code never does
-  this), then deletes fixture tenants. See
+  Test data uses the reserved `fup-test-` slug prefix and `@fup.test`
+  email domain. `afterAll` always closes the Nest app, even if cleanup
+  throws. The shared helper deletes tracked IDs, historical `cust-`
+  leftovers, and namespace rows older than one hour — never the live
+  fixtures of a parallel Jest worker. Delete order is RESTRICT-safe:
+  mappings, customers, outbox/inbox, API keys, audit (user triggers
+  disabled only for that delete; production code never does this),
+  users, then organizations. Seed `fraterunion` /
+  `@fraterunion.local` is never removed. See
   [`docs/architecture/audit-logging.md`](../../docs/architecture/audit-logging.md)
   and `packages/database/README.md`. There is no public `GET /audit`
   route; `AuditService.list` is service-only.

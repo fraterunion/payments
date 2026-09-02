@@ -1,26 +1,13 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { config as loadDotenv } from 'dotenv';
 import type { PrismaClient } from '@fraterunion-payments/database';
 import { AuditService } from '../src/audit/audit.service';
 import { UnsafeAuditMetadataError } from '../src/audit/audit-metadata';
 import { AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../src/audit/audit.types';
-import { deleteTenantsForTests } from './support/immutable-audit-cleanup';
+import { deleteTenantsForTests, teardownRealPgSuite } from './support/immutable-audit-cleanup';
+import { resolveDatabaseUrl } from './support/test-database-url';
+import { testEmail, testSlug } from './support/test-ownership';
 
-if (process.env['DATABASE_URL'] === undefined) {
-  for (const candidate of [
-    resolve(__dirname, '../../../packages/database/.env'),
-    resolve(process.cwd(), '../../packages/database/.env'),
-  ]) {
-    if (existsSync(candidate)) {
-      loadDotenv({ path: candidate });
-      break;
-    }
-  }
-}
-
-const databaseUrl = process.env['DATABASE_URL'];
+const databaseUrl = resolveDatabaseUrl();
 
 if (databaseUrl === undefined) {
   console.warn(
@@ -44,6 +31,7 @@ if (databaseUrl === undefined) {
       const { createPrismaClient } = await import('@fraterunion-payments/database');
       db = createPrismaClient({ connectionString: databaseUrl });
       await db.$connect();
+      await deleteTenantsForTests(db);
       audit = new AuditService({
         setContext: () => undefined,
         info: () => undefined,
@@ -53,12 +41,15 @@ if (databaseUrl === undefined) {
     });
 
     afterAll(async () => {
-      await deleteTenantsForTests(db, organizationIds, userIds);
-      await db.$disconnect();
+      await teardownRealPgSuite({
+        db,
+        organizationIds,
+        userIds,
+      });
     });
 
     async function createOrg(): Promise<{ id: string }> {
-      const slug = `audit-test-${randomUUID().slice(0, 8)}`;
+      const slug = testSlug(`audit-${randomUUID().slice(0, 8)}`);
       const organization = await db.organization.create({
         data: {
           name: `Audit ${slug}`,
@@ -77,7 +68,7 @@ if (databaseUrl === undefined) {
     async function createUser(): Promise<{ id: string }> {
       const user = await db.user.create({
         data: {
-          email: `audit-${randomUUID().slice(0, 8)}@example.com`,
+          email: testEmail(`audit-${randomUUID().slice(0, 8)}`),
           status: 'ACTIVE',
         },
       });

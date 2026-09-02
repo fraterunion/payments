@@ -188,6 +188,9 @@ Before committing a migration:
 - Read the generated SQL. Confirm enum values, column types, defaults,
   indexes, and `ON DELETE`/`ON UPDATE` behavior match what the schema
   comments describe.
+- Name the directory so its timestamp sorts **after** the latest already-
+  committed migration. Prisma applies files in directory-name order.
+  Do not rename a migration that has already been applied.
 - Apply it against a real local PostgreSQL database with
   `pnpm db:migrate:dev` — this package's correctness (especially foreign
   key and uniqueness behavior) is validated against real PostgreSQL, not

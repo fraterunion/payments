@@ -1,7 +1,4 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { config as loadDotenv } from 'dotenv';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import type { PrismaClient } from '@fraterunion-payments/database';
@@ -10,22 +7,12 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { AppConfigService } from '../src/config/app-config.service';
 import { DatabaseService } from '../src/database/database.service';
-import { deleteTenantsForTests } from './support/immutable-audit-cleanup';
+import { deleteTenantsForTests, teardownRealPgSuite } from './support/immutable-audit-cleanup';
+import { resolveDatabaseUrl } from './support/test-database-url';
 import { createTestEnvironment } from './support/test-environment';
+import { testEmail, testSlug } from './support/test-ownership';
 
-if (process.env['DATABASE_URL'] === undefined) {
-  for (const candidate of [
-    resolve(__dirname, '../../../packages/database/.env'),
-    resolve(process.cwd(), '../../packages/database/.env'),
-  ]) {
-    if (existsSync(candidate)) {
-      loadDotenv({ path: candidate });
-      break;
-    }
-  }
-}
-
-const databaseUrl = process.env['DATABASE_URL'];
+const databaseUrl = resolveDatabaseUrl();
 
 if (databaseUrl === undefined) {
   console.warn(
@@ -52,15 +39,16 @@ if (databaseUrl === undefined) {
     configureApp(app, app.get(AppConfigService));
     await app.init();
     db = app.get(DatabaseService).getClient();
+    await deleteTenantsForTests(db);
   });
 
   afterAll(async () => {
-    if (db !== undefined) {
-      await deleteTenantsForTests(db, [...createdOrgIds], [...createdUserIds]);
-    }
-    if (app !== undefined) {
-      await app.close();
-    }
+    await teardownRealPgSuite({
+      app,
+      db,
+      organizationIds: [...createdOrgIds],
+      userIds: [...createdUserIds],
+    });
   });
 
   async function registerOwner(): Promise<{
@@ -72,10 +60,10 @@ if (databaseUrl === undefined) {
     const response = await request(app.getHttpServer())
       .post('/api/v1/auth/register')
       .send({
-        email: `cust-${suffix}@example.com`,
+        email: testEmail(`cust-${suffix}`),
         password: `a sufficiently long passphrase ${suffix}`,
         organizationName: `Cust ${suffix}`,
-        organizationSlug: `cust-${suffix}`,
+        organizationSlug: testSlug(`cust-${suffix}`),
         defaultCurrency: 'USD',
         countryCode: 'US',
         timezone: 'America/New_York',
@@ -114,7 +102,7 @@ if (databaseUrl === undefined) {
       .post('/api/v1/customers')
       .set(headers)
       .send({
-        email: '  Pat@Example.COM  ',
+        email: '  Pat@Fup.TEST  ',
         name: 'Pat',
         phone: '+15551234567',
         externalReference: 'member-pat',
@@ -122,7 +110,7 @@ if (databaseUrl === undefined) {
       })
       .expect(201);
 
-    expect(created.body.email).toBe('pat@example.com');
+    expect(created.body.email).toBe('pat@fup.test');
     expect(created.body.type).toBe('INDIVIDUAL');
     expect(created.body.organizationId).toBeUndefined();
 
