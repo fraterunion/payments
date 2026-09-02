@@ -593,6 +593,10 @@ model InboxEvent {
   source          String @db.VarChar(128)
   externalEventId String @map("external_event_id") @db.VarChar(256)
   eventType       String @map("event_type") @db.VarChar(128)
+  /// Verified inbound JSON object. Stripe webhook ingestion stores the
+  /// signed event after signature verification. Payloads may contain
+  /// provider PII; never persist PAN, CVC, secrets, or onboarding URLs.
+  payload         Json   @default("{}")
   payloadHash     String @map("payload_hash") @db.VarChar(64)
 
   status       InboxEventStatus @default(RECEIVED)

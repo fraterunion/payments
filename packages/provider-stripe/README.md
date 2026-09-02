@@ -49,13 +49,31 @@ not read `process.env`.
 
 Pinned versions: Stripe Node SDK **22.6.1**, API **2026-08-26.dahlia**.
 
+Webhook verification:
+
+```ts
+import {
+  verifyStripeWebhook,
+  createStripeWebhookTestSignature,
+} from '@fraterunion-payments/provider-stripe';
+
+const verified = verifyStripeWebhook({
+  rawBody, // exact Buffer or string from the HTTP request
+  signature, // Stripe-Signature header
+  secrets: [currentSecret, previousSecret],
+});
+```
+
+`verified.payload` is plain JSON, never `Stripe.Event`. HTTP ingestion
+and inbox persistence live in `apps/api`. See
+[`docs/architecture/stripe-webhook-ingestion.md`](../../docs/architecture/stripe-webhook-ingestion.md).
+
 ## What this package is not
 
-It does not write to the database, expose HTTP routes, verify webhooks,
-handle raw cards, or wire public Payment / Refund APIs. Connect onboarding
-is implemented here as `StripeConnectProvider` (Accounts v2 + hosted
-Account Links). See
-[`docs/architecture/stripe-connect.md`](../../docs/architecture/stripe-connect.md).
+It does not write to the database, expose HTTP routes, handle raw cards,
+or wire public Payment / Refund APIs. Connect onboarding is implemented
+here as `StripeConnectProvider` (Accounts v2 + hosted Account Links).
+See [`docs/architecture/stripe-connect.md`](../../docs/architecture/stripe-connect.md).
 
 ## Tests
 

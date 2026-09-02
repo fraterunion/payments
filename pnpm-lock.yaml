@@ -270,6 +270,9 @@ importers:
       '@fraterunion-payments/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@fraterunion-payments/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@fraterunion-payments/payment-core':
         specifier: workspace:*
         version: link:../../packages/payment-core

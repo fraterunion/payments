@@ -13,7 +13,8 @@ export function inboxScopeKey(organizationId: string | undefined): string {
 /**
  * Durable inbox. Identity is `(scopeKey, source, externalEventId)` where
  * `scopeKey` is the organization UUID or `platform`. Concurrent first
- * receipts serialize on the unique constraint.
+ * receipts serialize on the unique constraint. `payload` is the verified
+ * inbound JSON object (Stripe webhook ingestion stores the signed event).
  */
 export class InboxService {
   async receive(client: EventWriteClient, input: ReceiveInboxInput): Promise<InboxReceiveResult> {
@@ -34,6 +35,7 @@ export class InboxService {
           source: input.source,
           externalEventId: input.externalEventId,
           eventType: input.eventType,
+          payload: input.payload,
           payloadHash,
           status: 'RECEIVED',
           ...(input.organizationId !== undefined ? { organizationId: input.organizationId } : {}),

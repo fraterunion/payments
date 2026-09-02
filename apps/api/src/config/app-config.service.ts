@@ -126,4 +126,25 @@ export class AppConfigService {
   get stripeConnectRefreshUrl(): string | undefined {
     return this.environment.stripeConnectRefreshUrl;
   }
+
+  /** Intentionally has no equivalent HTTP-exposed getter/response field. */
+  get stripeWebhookSecret(): string | undefined {
+    return this.environment.stripeWebhookSecret;
+  }
+
+  /** Intentionally has no equivalent HTTP-exposed getter/response field. */
+  get stripeWebhookSecretPrevious(): string | undefined {
+    return this.environment.stripeWebhookSecretPrevious;
+  }
+
+  get stripeWebhookSecrets(): readonly string[] {
+    const secrets: string[] = [];
+    if (this.environment.stripeWebhookSecret !== undefined) {
+      secrets.push(this.environment.stripeWebhookSecret);
+    }
+    if (this.environment.stripeWebhookSecretPrevious !== undefined) {
+      secrets.push(this.environment.stripeWebhookSecretPrevious);
+    }
+    return secrets;
+  }
 }

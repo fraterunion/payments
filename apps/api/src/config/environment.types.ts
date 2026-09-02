@@ -33,4 +33,6 @@ export interface Environment {
   readonly stripeSecretKey?: string;
   readonly stripeConnectReturnUrl?: string;
   readonly stripeConnectRefreshUrl?: string;
+  readonly stripeWebhookSecret?: string;
+  readonly stripeWebhookSecretPrevious?: string;
 }

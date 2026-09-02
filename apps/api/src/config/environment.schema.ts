@@ -151,6 +151,8 @@ const rawEnvironmentSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_CONNECT_RETURN_URL: z.string().optional(),
   STRIPE_CONNECT_REFRESH_URL: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET_PREVIOUS: z.string().optional(),
 });
 
 export const environmentSchema = rawEnvironmentSchema
@@ -158,6 +160,8 @@ export const environmentSchema = rawEnvironmentSchema
     const stripeSecretKey = optionalNonEmptyString(raw.STRIPE_SECRET_KEY);
     const stripeConnectReturnUrl = optionalNonEmptyString(raw.STRIPE_CONNECT_RETURN_URL);
     const stripeConnectRefreshUrl = optionalNonEmptyString(raw.STRIPE_CONNECT_REFRESH_URL);
+    const stripeWebhookSecret = optionalNonEmptyString(raw.STRIPE_WEBHOOK_SECRET);
+    const stripeWebhookSecretPrevious = optionalNonEmptyString(raw.STRIPE_WEBHOOK_SECRET_PREVIOUS);
     return {
       nodeEnv: raw.NODE_ENV,
       apiPort: raw.API_PORT,
@@ -186,6 +190,8 @@ export const environmentSchema = rawEnvironmentSchema
       ...(stripeSecretKey !== undefined ? { stripeSecretKey } : {}),
       ...(stripeConnectReturnUrl !== undefined ? { stripeConnectReturnUrl } : {}),
       ...(stripeConnectRefreshUrl !== undefined ? { stripeConnectRefreshUrl } : {}),
+      ...(stripeWebhookSecret !== undefined ? { stripeWebhookSecret } : {}),
+      ...(stripeWebhookSecretPrevious !== undefined ? { stripeWebhookSecretPrevious } : {}),
     };
   })
   .superRefine((environment, ctx) => {
@@ -314,6 +320,39 @@ export const environmentSchema = rawEnvironmentSchema
             message: issue,
           });
         }
+      }
+    }
+
+    if (environment.stripeWebhookSecret !== undefined) {
+      if (
+        !environment.stripeWebhookSecret.startsWith('whsec_') ||
+        environment.stripeWebhookSecret.length < 22
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STRIPE_WEBHOOK_SECRET'],
+          message: 'STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret.',
+        });
+      }
+    }
+
+    if (environment.stripeWebhookSecretPrevious !== undefined) {
+      if (environment.stripeWebhookSecret === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STRIPE_WEBHOOK_SECRET_PREVIOUS'],
+          message: 'STRIPE_WEBHOOK_SECRET_PREVIOUS requires STRIPE_WEBHOOK_SECRET.',
+        });
+      }
+      if (
+        !environment.stripeWebhookSecretPrevious.startsWith('whsec_') ||
+        environment.stripeWebhookSecretPrevious.length < 22
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STRIPE_WEBHOOK_SECRET_PREVIOUS'],
+          message: 'STRIPE_WEBHOOK_SECRET_PREVIOUS must be a Stripe webhook signing secret.',
+        });
       }
     }
   });

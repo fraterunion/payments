@@ -22,7 +22,9 @@ provider mappings, persisted canonical payments, persisted canonical
 refunds (create/get/list plus internal lifecycle, without provider
 execution), durable financial-command idempotency, an isolated Stripe provider adapter,
 and organization-owned Stripe connected-account onboarding
-(`ProviderAccountConnection`). Public Payment/Refund APIs are not wired
+(`ProviderAccountConnection`). Inbound Stripe webhook ingestion verifies
+signatures and persists durable `InboxEvent` receipts; it does not yet
+normalize payment domain events. Public Payment/Refund APIs are not wired
 to Stripe yet. Ledger posting, reconciliation, billing, and outbound
 organization webhooks are not implemented yet.
 
@@ -30,7 +32,7 @@ organization webhooks are not implemented yet.
 
 ```text
 apps/
-  api/      NestJS API (auth, tenancy, customers, payments, refunds, provider connections)
+  api/      NestJS API (auth, tenancy, customers, payments, refunds, provider connections, Stripe webhooks)
   admin/    Next.js App Router admin console
   docs/     Next.js App Router developer documentation site
   worker/   Outbox worker (PostgreSQL poll, claim, dispatch)
@@ -85,6 +87,8 @@ implementation must follow them, not the other way around.
   provider interface, capabilities, registry, and normalized observations.
 - [Stripe provider adapter](docs/architecture/stripe-provider-adapter.md) —
   isolated Stripe SDK adapter, status mapping, and money conversion.
+- [Stripe webhook ingestion](docs/architecture/stripe-webhook-ingestion.md) —
+  signed receipt boundary, tenant resolution, and durable InboxEvent.
 - [Payment lifecycle](docs/architecture/payment-lifecycle.md) — the
   normalized payment state machine and failure/refund handling.
 - [Subscription lifecycle](docs/architecture/subscription-lifecycle.md) —

@@ -66,7 +66,11 @@ const result = await inbox.receive(tx, {
 Identity is `(scopeKey, source, externalEventId)` where `scopeKey` is the
 organization UUID or `'platform'`. Same identity + same canonical hash is
 a duplicate. Same identity + different hash is a conflict — the original
-hash is not overwritten.
+payload and hash are not overwritten.
+
+`payload` is the verified inbound JSON object. Stripe webhook ingestion
+stores the signed event JSON here after signature verification. See
+[`docs/architecture/stripe-webhook-ingestion.md`](../../docs/architecture/stripe-webhook-ingestion.md).
 
 ## Defaults
 

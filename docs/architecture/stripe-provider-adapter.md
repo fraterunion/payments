@@ -29,9 +29,12 @@ This package does **not**:
 - persist Payments, Refunds, or provider IDs
 - expose HTTP routes (`/stripe/*` or otherwise)
 - orchestrate public Payment/Refund APIs
-- ingest or verify webhooks
 - collect raw cards or PaymentMethods
 - invent idempotency keys
+
+Webhook **signature verification** is exported as `verifyStripeWebhook`.
+HTTP ingestion, inbox persistence, and tenant resolution live in
+`apps/api`. See [`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md).
 
 Connect onboarding lives in `StripeConnectProvider` (Accounts v2 + hosted
 Account Links). Public Payment/Refund APIs are still not wired to Stripe.
@@ -327,6 +330,8 @@ skip cleanly; CI must not fail.
 ## Related documents
 
 - [`provider-contracts.md`](./provider-contracts.md)
+- [`stripe-connect.md`](./stripe-connect.md)
+- [`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md)
 - [`payment-lifecycle.md`](./payment-lifecycle.md)
 - [`refunds.md`](./refunds.md)
 - [ADR-004](../decisions/ADR-004-provider-abstraction.md)

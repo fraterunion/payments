@@ -15,7 +15,10 @@ financial-command idempotency (`idempotency_records`; see
 (`@fraterunion-payments/provider-stripe`), and canonical Stripe
 connected-account onboarding (`ProviderAccountConnection`; see
 [`provider-account-connections.md`](./provider-account-connections.md)
-and [`stripe-connect.md`](./stripe-connect.md)). Public Payment/Refund
+and [`stripe-connect.md`](./stripe-connect.md)). Durable Stripe webhook
+ingestion persists verified `InboxEvent` receipts
+([`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md)); payment
+normalization from those events is not implemented yet. Public Payment/Refund
 APIs are not yet wired to Stripe. See the root
 [`README.md`](../../README.md). This document still defines the broader
 target shape later commits build toward.

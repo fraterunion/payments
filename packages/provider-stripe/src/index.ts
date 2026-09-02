@@ -15,3 +15,16 @@ export type {
   StripeConnectOperations,
   StripeHostedOnboardingLink,
 } from './connect-types.js';
+export {
+  createStripeWebhookTestSignature,
+  STRIPE_WEBHOOK_TOLERANCE_SECONDS,
+  verifyStripeWebhook,
+} from './webhook.js';
+export {
+  isStripeWebhookPayloadError,
+  isStripeWebhookSignatureError,
+  StripeWebhookPayloadError,
+  StripeWebhookSignatureError,
+} from './webhook-errors.js';
+export { assertStripeWebhookSecret } from './webhook-secret.js';
+export type { VerifiedStripeWebhook, VerifyStripeWebhookInput } from './webhook-types.js';

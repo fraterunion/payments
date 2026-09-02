@@ -21,11 +21,15 @@
     "test:refunds": "jest --testPathPatterns=refunds",
     "test:refunds:integration": "jest --config test/jest-integration.json --testPathPatterns=refunds",
     "test:provider-connections": "jest --testPathPatterns=provider-connections",
-    "test:provider-connections:integration": "jest --config test/jest-integration.json --testPathPatterns=provider-connections"
+    "test:provider-connections:integration": "jest --config test/jest-integration.json --testPathPatterns=provider-connections",
+    "test:webhooks": "jest --testPathPatterns=webhooks",
+    "test:webhooks:e2e": "jest --config test/jest-e2e.json --testPathPatterns=webhooks",
+    "test:webhooks:integration": "jest --config test/jest-integration.json --testPathPatterns=webhooks"
   },
   "dependencies": {
     "@fraterunion-payments/config": "workspace:*",
     "@fraterunion-payments/database": "workspace:*",
+    "@fraterunion-payments/events": "workspace:*",
     "@fraterunion-payments/payment-core": "workspace:*",
     "@fraterunion-payments/provider-contracts": "workspace:*",
     "@fraterunion-payments/provider-stripe": "workspace:*",

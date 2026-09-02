@@ -157,4 +157,27 @@ describe('GlobalExceptionFilter', () => {
 
     expect(json.mock.calls[0]?.[0]).toMatchObject({ error: { requestId: 'req-8' } });
   });
+
+  it('maps an oversized body to PAYLOAD_TOO_LARGE without leaking the entity', () => {
+    const logger = createMockLogger();
+    const filter = new GlobalExceptionFilter(logger as unknown as PinoLogger);
+    const { host, json, status } = createMockHost('req-9');
+    const error = Object.assign(new Error('request entity too large'), {
+      status: 413,
+      statusCode: 413,
+      type: 'entity.too.large',
+    });
+
+    filter.catch(error, host);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.PAYLOAD_TOO_LARGE);
+    expect(json).toHaveBeenCalledWith({
+      error: {
+        code: 'PAYLOAD_TOO_LARGE',
+        message: 'Request body is too large.',
+        requestId: 'req-9',
+      },
+    });
+    expect(logger.error).not.toHaveBeenCalled();
+  });
 });

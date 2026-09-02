@@ -133,6 +133,9 @@ General rules across all categories:
   a defense-in-depth measure only; signature verification is the actual
   trust boundary and must never be skipped based on source IP.
 
+Stripe inbound receipt is implemented as documented in
+[`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md).
+
 ## Administrative boundary
 
 - **RBAC.** Administrative capabilities are gated by role, both at the

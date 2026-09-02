@@ -1,13 +1,50 @@
 import { RequestMethod, VersioningType, type INestApplication } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { json, urlencoded } from 'express';
+import type { IncomingMessage } from 'node:http';
+import { json, raw, urlencoded, type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { createValidationPipe } from './common/pipes/validation-pipe.factory';
 import { AppConfigService } from './config/app-config.service';
 
 const REQUEST_BODY_SIZE_LIMIT = '1mb';
+
+export function stripeWebhookHttpPath(
+  config: Pick<AppConfigService, 'apiPrefix' | 'apiVersion'>,
+): string {
+  return `/${config.apiPrefix}/v${config.apiVersion}/webhooks/stripe`;
+}
+
+export type RequestWithRawBody = IncomingMessage & {
+  originalUrl?: string;
+  rawBody?: Buffer;
+};
+
+function preserveStripeWebhookRawBody(
+  config: Pick<AppConfigService, 'apiPrefix' | 'apiVersion'>,
+): (req: Request, res: Response, next: NextFunction) => void {
+  const webhookPath = stripeWebhookHttpPath(config);
+  const rawParser = raw({ type: () => true, limit: REQUEST_BODY_SIZE_LIMIT });
+  return (req, res, next) => {
+    const url = typeof req.originalUrl === 'string' ? req.originalUrl : req.url;
+    const path = (url ?? '').split('?')[0];
+    if (path !== webhookPath) {
+      next();
+      return;
+    }
+    rawParser(req, res, (error) => {
+      if (error) {
+        next(error);
+        return;
+      }
+      if (Buffer.isBuffer(req.body)) {
+        (req as RequestWithRawBody).rawBody = req.body;
+      }
+      next();
+    });
+  };
+}
 
 function configureSwagger(app: INestApplication, config: AppConfigService): void {
   const document = SwaggerModule.createDocument(
@@ -63,6 +100,7 @@ export function configureApp(app: NestExpressApplication, config: AppConfigServi
   app.use(requestIdMiddleware);
 
   app.use(helmet());
+  app.use(preserveStripeWebhookRawBody(config));
   app.use(json({ limit: REQUEST_BODY_SIZE_LIMIT }));
   app.use(urlencoded({ extended: true, limit: REQUEST_BODY_SIZE_LIMIT }));
   app.disable('x-powered-by');

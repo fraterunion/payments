@@ -145,6 +145,12 @@ Stripe SDK remains only in `packages/provider-stripe`.
 - public Payment/Refund execution on the connected account
 - application fees / destination charges / SCT
 - disconnect / deauthorization
-- webhooks
+- mutating connection readiness from webhook payloads
 - embedded Connect components
 - KYC document proxying
+
+Durable Stripe webhook **receipt** (signature verify → inbox) is
+documented in
+[`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md). Connect
+readiness is still refreshed by pulling Stripe as source of truth, not
+by trusting webhook fields.

@@ -293,4 +293,36 @@ describe('loadEnvironment', () => {
     expect(environment.stripeEnabled).toBe(true);
     expect(environment.stripeSecretKey).toBe('sk_test_not_a_real_key');
   });
+
+  it('accepts an optional Stripe webhook signing secret without requiring Stripe enablement', () => {
+    const environment = loadEnvironment({
+      ...VALID_ENV,
+      STRIPE_WEBHOOK_SECRET: 'whsec_test_fup_webhook_not_for_production',
+    });
+    expect(environment.stripeWebhookSecret).toBe('whsec_test_fup_webhook_not_for_production');
+  });
+
+  it('rejects a webhook secret that is not a Stripe signing secret without echoing it', () => {
+    try {
+      loadEnvironment({
+        ...VALID_ENV,
+        STRIPE_WEBHOOK_SECRET: 'sk_test_should_never_appear_as_webhook',
+      });
+      throw new Error('expected loadEnvironment to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(EnvironmentValidationError);
+      expect((error as EnvironmentValidationError).message).not.toContain(
+        'sk_test_should_never_appear_as_webhook',
+      );
+    }
+  });
+
+  it('rejects STRIPE_WEBHOOK_SECRET_PREVIOUS without the current secret', () => {
+    expect(() =>
+      loadEnvironment({
+        ...VALID_ENV,
+        STRIPE_WEBHOOK_SECRET_PREVIOUS: 'whsec_test_fup_webhook_previous_secret',
+      }),
+    ).toThrow(EnvironmentValidationError);
+  });
 });

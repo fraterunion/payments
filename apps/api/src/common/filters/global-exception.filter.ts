@@ -25,6 +25,7 @@ const STATUS_TO_CODE: ReadonlyMap<number, ErrorCode> = new Map([
   [HttpStatus.FORBIDDEN, ERROR_CODES.FORBIDDEN],
   [HttpStatus.NOT_FOUND, ERROR_CODES.NOT_FOUND],
   [HttpStatus.CONFLICT, ERROR_CODES.CONFLICT],
+  [HttpStatus.PAYLOAD_TOO_LARGE, ERROR_CODES.PAYLOAD_TOO_LARGE],
   [HttpStatus.SERVICE_UNAVAILABLE, ERROR_CODES.DEPENDENCY_UNAVAILABLE],
 ]);
 
@@ -87,6 +88,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       };
     }
 
+    if (isEntityTooLarge(exception)) {
+      return {
+        status: HttpStatus.PAYLOAD_TOO_LARGE,
+        code: ERROR_CODES.PAYLOAD_TOO_LARGE,
+        message: 'Request body is too large.',
+        details: undefined,
+      };
+    }
+
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       if (status >= 500) {
@@ -126,4 +136,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     this.logger.warn({ requestId, status: resolved.status, code: resolved.code }, 'Request failed');
   }
+}
+
+function isEntityTooLarge(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const status = 'status' in error ? error.status : undefined;
+  const statusCode = 'statusCode' in error ? error.statusCode : undefined;
+  const type = 'type' in error ? error.type : undefined;
+  return status === 413 || statusCode === 413 || type === 'entity.too.large';
 }

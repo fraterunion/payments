@@ -40,6 +40,7 @@ describePostgres('InboxService (real PostgreSQL)', () => {
       payload: { a: 1, b: 2 },
     });
     expect(first.kind).toBe('NEW');
+    expect(first.event.payload).toEqual({ a: 1, b: 2 });
 
     const duplicate = await inbox.receive(db, {
       organizationId: org.id,

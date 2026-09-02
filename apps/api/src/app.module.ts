@@ -6,6 +6,7 @@ import { CustomersModule } from './customers/customers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ProviderConnectionsModule } from './provider-connections/provider-connections.module';
 import { RefundsModule } from './refunds/refunds.module';
+import { StripeWebhooksModule } from './webhooks/stripe-webhooks.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { AppConfigModule } from './config/app-config.module';
 import type { Environment } from './config/environment.types';
@@ -38,6 +39,7 @@ export class AppModule {
         PaymentsModule,
         RefundsModule,
         ProviderConnectionsModule,
+        StripeWebhooksModule,
       ],
       providers: [{ provide: APP_FILTER, useClass: GlobalExceptionFilter }],
     };

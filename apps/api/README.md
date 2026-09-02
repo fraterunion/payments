@@ -9,9 +9,11 @@ validation and error handling, versioning, Swagger) and, as of the `auth`,
 `customers`, `payments`, `refunds`, and `provider-connections` modules,
 human authentication, organization-scoped API keys, role/scope-based access
 control, tenant-safe customers, canonical payment/refund create/get/list
-(internal lifecycle only; public APIs still do not execute on Stripe), and
+(internal lifecycle only; public APIs still do not execute on Stripe),
 Stripe connected-account onboarding behind canonical provider-connection
-resources. Billing remains out of scope. See
+resources, and durable Stripe webhook ingestion (signature verify → inbox
+receipt only; no payment-domain normalization yet). Billing remains out of
+scope. See
 [ADR-001](../../docs/decisions/ADR-001-nestjs-nextjs-and-typescript.md) for
 why NestJS was chosen,
 [`../../docs/architecture/security-boundaries.md`](../../docs/architecture/security-boundaries.md)
@@ -49,6 +51,7 @@ src/
 ├── customers/                    Customer CRUD/archive, provider-mapping service (create is service-only)
 ├── payments/                     Canonical payment create/get/list; internal lifecycle; create idempotency
 ├── provider-connections/         Canonical Stripe Connect onboarding; human OWNER/ADMIN create
+├── webhooks/                     POST /webhooks/stripe — signature verify + InboxEvent receipt
 ├── auth/                         see below and
 │   │                             ../../docs/architecture/authentication-and-access-control.md
 │   ├── auth.module.ts
@@ -102,6 +105,12 @@ When `STRIPE_ENABLED=true`, the API also requires `STRIPE_SECRET_KEY`,
 `STRIPE_CONNECT_RETURN_URL`, and `STRIPE_CONNECT_REFRESH_URL`. Those
 values are never logged or returned. See
 [`../../docs/architecture/stripe-connect.md`](../../docs/architecture/stripe-connect.md).
+
+Optional `STRIPE_WEBHOOK_SECRET` (`whsec_…`) enables
+`POST /api/v1/webhooks/stripe`. `STRIPE_WEBHOOK_SECRET_PREVIOUS` is the
+retiring secret during rotation. Neither is logged, returned, audited, or
+shown in Swagger. See
+[`../../docs/architecture/stripe-webhook-ingestion.md`](../../docs/architecture/stripe-webhook-ingestion.md).
 
 Configuration is exposed only through `AppConfigService`'s typed getters —
 nothing reads `process.env` outside `main.ts`'s single `loadEnvironment()`
@@ -200,6 +209,17 @@ integer minor units as a decimal string (`"5000"`). Currency is taken
 from the payment. `CREATED` reserves capacity; it does not mean money
 moved externally. Public lifecycle mutation endpoints are intentionally
 absent. See [`../../docs/architecture/refunds.md`](../../docs/architecture/refunds.md).
+
+## Stripe webhooks
+
+```http
+POST /api/v1/webhooks/stripe
+```
+
+Unauthenticated by JWT/API key. Authenticated only by Stripe signature
+verification over the exact raw body. Returns `{ "received": true }`.
+Does not mutate Payment, Refund, ledger, or audit. See
+[`../../docs/architecture/stripe-webhook-ingestion.md`](../../docs/architecture/stripe-webhook-ingestion.md).
 
 ## Financial idempotency
 
@@ -304,15 +324,16 @@ Structured logging via `nestjs-pino`/`pino`
   code via `pino-http`'s HTTP logger.
 - `req`/`res` are re-serialized narrowly (method, url, id / statusCode
   only) — full headers and bodies are never logged by default.
-- Redacted regardless: `authorization`, `cookie`, `x-api-key` headers,
-  `set-cookie` response header, and any `password`, `passwordHash`,
-  `secret`, `secretHash`, `token`, `accessToken`, `refreshToken`, `apiKey`,
-  `rawKey`, `jwtAccessSecret`, `apiKeyHashSecret`, `databaseUrl`,
-  `cardNumber`, or `cvc` field found in a logged object, at any depth. This
-  is defense in depth on top of `req`/`res` re-serialization already
-  excluding bodies — no code in `auth`/`audit` deliberately logs a raw
-  request body or DTO, but the redact list guards against that changing by
-  accident.
+- Redacted regardless: `authorization`, `cookie`, `x-api-key`,
+  `stripe-signature` headers, `req.rawBody`, `set-cookie` response header,
+  and any `password`, `passwordHash`, `secret`, `secretHash`, `token`,
+  `accessToken`, `refreshToken`, `apiKey`, `rawKey`, `jwtAccessSecret`,
+  `apiKeyHashSecret`, `stripeWebhookSecret`, `stripeWebhookSecretPrevious`,
+  `webhookSecret`, `databaseUrl`, `cardNumber`, or `cvc` field found in a
+  logged object, at any depth. This is defense in depth on top of `req`/`res`
+  re-serialization already excluding bodies — no code in `auth`/`audit`
+  deliberately logs a raw request body or DTO, but the redact list guards
+  against that changing by accident.
 - No remote log transport is configured.
 
 ## Validation
@@ -339,6 +360,11 @@ pnpm test:api:e2e              # e2e tests (test/*.e2e-spec.ts) — DatabaseServ
 pnpm test:api:integration:db   # real PostgreSQL smoke test — requires DATABASE_URL
 pnpm test:api:auth             # unit tests scoped to src/auth — no database required
 pnpm test:api:auth:integration # real PostgreSQL auth suite — requires DATABASE_URL
+# Stripe webhook HTTP e2e: test/webhooks.e2e-spec.ts (signature failures
+# run with FakeDatabaseService; persistence requires DATABASE_URL)
+# Stripe webhook real-PG concurrency / no-mutation:
+#   test/webhooks.integration-spec.ts
+#   pnpm --filter @fraterunion-payments/api run test:webhooks:integration
 # Audit immutability / query tests live in test/audit.integration-spec.ts
 # and run with the same jest-integration config as auth integration.
 # Payment real-PG tests: test/payments.integration-spec.ts

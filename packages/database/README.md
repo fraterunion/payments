@@ -488,11 +488,14 @@ value by exact match.
   superuser. See
   [`docs/architecture/audit-logging.md`](../../docs/architecture/audit-logging.md).
 - **Outbox / inbox:** `OutboxEvent.payload` and `metadata` must never
-  contain secrets, tokens, provider credentials, or card data. Inbox
-  rows store only a SHA-256 payload hash, not the inbound body.
-  `lastErrorMessage` columns are bounded operational summaries, not stack
-  traces. See
-  [`docs/architecture/event-delivery.md`](../../docs/architecture/event-delivery.md).
+  contain secrets, tokens, provider credentials, or card data.
+  `InboxEvent.payload` stores the verified inbound JSON object (Stripe
+  webhook receipts included). It may contain provider PII; it must never
+  contain PAN, CVC, secrets, or onboarding URLs. `lastErrorMessage`
+  columns are bounded operational summaries, not stack traces. See
+  [`docs/architecture/event-delivery.md`](../../docs/architecture/event-delivery.md)
+  and
+  [`docs/architecture/stripe-webhook-ingestion.md`](../../docs/architecture/stripe-webhook-ingestion.md).
 - **No plaintext secrets, ever**, in this schema, its migrations, its
   seed data, or example `.env` values committed to this repository.
 

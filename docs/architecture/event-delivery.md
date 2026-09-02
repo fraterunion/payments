@@ -215,9 +215,12 @@ therefore have a non-null `scopeKey`:
 A CHECK constraint keeps those two representations consistent. Uniqueness
 is `(scopeKey, source, externalEventId)`.
 
-The full inbound payload is **not** stored on `InboxEvent`. Future
-provider-webhook infrastructure will own raw event storage. This table
-keeps a SHA-256 hash of the canonical JSON payload.
+The full inbound payload **is** stored on `InboxEvent.payload` as JSONB
+(object only). Commit 7 originally hashed without persisting the body;
+Stripe webhook ingestion needs the verified event JSON for later
+normalization. `payloadHash` remains the SHA-256 of canonical JSON and
+is still the conflict detector. See
+[`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md).
 
 ### Receive results
 
