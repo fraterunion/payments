@@ -146,11 +146,11 @@ Customer-action details (`REDIRECT` / `SDK` /
 
 ## Domain vs capability vs concurrency
 
-| Layer                   | Meaning                                                           |
-| ----------------------- | ----------------------------------------------------------------- |
-| Domain possibility      | The numbers and states are legal (e.g. remaining capturable > 0). |
-| Provider capability     | Whether that provider can execute the command (later contracts).  |
-| Persistence concurrency | Whether two writers can race (later transactions).                |
+| Layer                   | Meaning                                                               |
+| ----------------------- | --------------------------------------------------------------------- |
+| Domain possibility      | The numbers and states are legal (e.g. remaining capturable > 0).     |
+| Provider capability     | Whether that provider can execute the command (`provider-contracts`). |
+| Persistence concurrency | Whether two writers can race (later transactions).                    |
 
 ## Deferred
 
