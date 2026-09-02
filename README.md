@@ -15,10 +15,11 @@ processor itself.
 ## Repository status
 
 The monorepo foundation, core tenancy schema, authentication and
-organization access control, immutable tenant audit logging, and the
-transactional outbox / durable inbox substrate are in place. Payment
-processing, provider adapters, ledger posting, reconciliation, billing,
-and outbound organization webhooks are not implemented yet.
+organization access control, immutable tenant audit logging, the
+transactional outbox / durable inbox substrate, and the provider-neutral
+payment domain are in place. Payment persistence, provider adapters,
+ledger posting, reconciliation, billing, and outbound organization
+webhooks are not implemented yet.
 
 ## Monorepo structure
 
@@ -34,7 +35,7 @@ packages/
   database/             PostgreSQL/Prisma schema and client
   events/               Transactional outbox and durable inbox
   eslint-config/        Shared ESLint flat configs (base, next, node)
-  payment-core/         Future provider-independent payment domain logic
+  payment-core/         Provider-independent payment domain (money, states, refunds)
   provider-contracts/   Future payment-provider interfaces
   sdk-typescript/       Future TypeScript SDK (@fraterunion-payments/sdk)
   shared/                Small shared utilities (e.g. assertNever)
@@ -68,6 +69,8 @@ implementation must follow them, not the other way around.
   outbox, durable inbox, at-least-once semantics, and the outbox worker.
 - [Audit logging](docs/architecture/audit-logging.md) — append-only,
   tenant-scoped security audit and how it differs from the outbox.
+- [Payment domain](docs/architecture/payment-domain.md) — provider-neutral
+  money, payment aggregate, and refund invariants.
 - [Payment lifecycle](docs/architecture/payment-lifecycle.md) — the
   normalized payment state machine and failure/refund handling.
 - [Subscription lifecycle](docs/architecture/subscription-lifecycle.md) —

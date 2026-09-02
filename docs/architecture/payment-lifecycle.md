@@ -6,10 +6,15 @@ Authoritative. Defines the provider-neutral payment state machine and the
 rules governing how payment state is created and changed. Provider
 adapters (Stripe first) must translate provider-specific statuses into
 this model; no provider-specific status may be exposed outside the
-adapter layer. No payment functionality is implemented yet — this
-document constrains how it will be built.
+adapter layer. The canonical state machine is implemented in
+`@fraterunion-payments/payment-core`. Persistence, provider calls, and
+HTTP payment routes are not implemented yet.
 
-Last updated: 2026-08-06
+Last updated: 2026-09-02
+
+The provider-neutral domain implementation lives in
+`@fraterunion-payments/payment-core`. See
+[`payment-domain.md`](./payment-domain.md).
 
 ## States and definitions
 
@@ -131,10 +136,14 @@ stateDiagram-v2
 - **Authorization expiration** is provider-defined; an `AUTHORIZED`
   payment that is not captured before the provider's authorization window
   closes transitions to `FAILED`.
-- **Partial capture** (capturing less than the authorized amount) is
-  deferred; v1 supports capturing the full authorized amount only. Partial
-  capture is not represented in the state machine above and must not be
-  implemented until explicitly added to scope.
+- **Partial capture** is a domain monetary possibility: a single successful
+  capture may record `0 < capturedAmount <= authorizedAmount`. The state
+  machine still has one capture completion (`CAPTURING` → `SUCCEEDED`).
+  Repeated incremental captures are **not** in the matrix — whether a
+  provider can issue multiple capture commands is a future capability
+  check, not a core transition. This updates the earlier “full authorized
+  amount only” product note so the domain is not forced into all-or-nothing
+  arithmetic (see [`payment-domain.md`](./payment-domain.md)).
 - **Capture failures** transition the payment to `FAILED` and do not
   automatically retry; a new payment is required if the customer wishes to
   try again, unless a documented retry policy is introduced later.
