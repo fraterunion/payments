@@ -128,9 +128,14 @@ model Organization {
 model User {
   id String @id @default(uuid(7)) @db.Uuid
 
-  /// Globally unique. Database uniqueness is a byte-for-byte comparison; it
-  /// does not canonicalize case or handle look-alike addresses. Robust
-  /// case-insensitive identity is application-enforced later (see README).
+  /// Globally unique identity. Application writes store the canonical form
+  /// (trim + lowercase). `@unique` remains so Prisma can `findUnique` /
+  /// `upsert` by exact email — the application always looks up the
+  /// canonical value. Case-insensitive uniqueness is additionally enforced
+  /// by the PostgreSQL functional unique index `users_email_lower_uidx`
+  /// (`LOWER(email)`), defined in the `enforce_canonical_email_uniqueness`
+  /// migration. Prisma cannot declare expression indexes, so that
+  /// invariant is maintained in SQL, not in this schema (see README).
   email       String  @unique @db.VarChar(320)
   displayName String? @map("display_name")
 

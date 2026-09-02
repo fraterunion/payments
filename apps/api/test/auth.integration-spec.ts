@@ -245,6 +245,72 @@ interface RegisteredFixture {
         .send({ email: `  MIXEDCASE-${suffix}@EXAMPLE.com  `, password })
         .expect(200);
     });
+
+    it('rejects a case-only email variant with the same safe 409 as an exact duplicate', async () => {
+      const fixture = await registerFixture();
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          email: fixture.email.replace('owner-', 'Owner-').replace('@example.com', '@Example.com'),
+          password: 'a completely different passphrase',
+          organizationName: 'Another Org',
+          organizationSlug: `another-${uniqueSuffix()}`,
+          defaultCurrency: 'USD',
+          countryCode: 'US',
+          timezone: 'America/New_York',
+        })
+        .expect(409);
+
+      const body = JSON.stringify(response.body);
+      expect(response.body.error.code).toBe('CONFLICT');
+      expect(response.body.error.message).toMatch(/already exists|already in use/i);
+      expect(body).not.toMatch(/users_email_lower_uidx|P2002|prisma|LOWER\(|duplicate key/i);
+    });
+  });
+
+  describe('canonical email uniqueness (PostgreSQL)', () => {
+    it('exposes the functional unique index on LOWER(email)', async () => {
+      const indexes = await db.$queryRaw<Array<{ indexname: string; indexdef: string }>>`
+        SELECT indexname, indexdef
+        FROM pg_indexes
+        WHERE tablename = 'users'
+        ORDER BY indexname
+      `;
+      const lower = indexes.find((index) => index.indexname === 'users_email_lower_uidx');
+      expect(lower?.indexdef).toMatch(/CREATE UNIQUE INDEX users_email_lower_uidx/);
+      expect(lower?.indexdef).toMatch(/lower\(\(email\)::text\)/);
+    });
+
+    it('rejects case-variant and exact duplicate inserts without mutating the original user', async () => {
+      const suffix = uniqueSuffix();
+      const canonical = `db-owner-${suffix}@example.com`;
+      const original = await db.user.create({
+        data: { email: canonical, status: 'ACTIVE', displayName: 'Original Owner' },
+      });
+      createdUserIds.add(original.id);
+
+      await expect(
+        db.user.create({ data: { email: `DB-Owner-${suffix}@Example.com`, status: 'ACTIVE' } }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+
+      await expect(
+        db.user.create({ data: { email: canonical, status: 'ACTIVE' } }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+
+      const other = await db.user.create({
+        data: { email: `db-other-${suffix}@example.com`, status: 'ACTIVE' },
+      });
+      createdUserIds.add(other.id);
+
+      const reloaded = await db.user.findUniqueOrThrow({ where: { id: original.id } });
+      expect(reloaded).toMatchObject({
+        email: canonical,
+        displayName: 'Original Owner',
+        status: 'ACTIVE',
+      });
+      expect(reloaded.updatedAt).toEqual(original.updatedAt);
+    });
   });
 
   describe('login', () => {

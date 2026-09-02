@@ -2,12 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import { PASSWORD_MAX_LENGTH } from '../services/password.service';
+import { canonicalizeEmailTransform } from '../utils/canonicalize-email.util';
 
 const EMAIL_MAX_LENGTH = 320;
-
-function trimAndLowercase({ value }: { value: unknown }): unknown {
-  return typeof value === 'string' ? value.trim().toLowerCase() : value;
-}
 
 /**
  * Deliberately has no password minimum-length validation, unlike
@@ -20,7 +17,7 @@ function trimAndLowercase({ value }: { value: unknown }): unknown {
  */
 export class LoginDto {
   @ApiProperty({ example: 'owner@example.com' })
-  @Transform(trimAndLowercase)
+  @Transform(canonicalizeEmailTransform)
   @IsEmail()
   @MaxLength(EMAIL_MAX_LENGTH)
   email!: string;

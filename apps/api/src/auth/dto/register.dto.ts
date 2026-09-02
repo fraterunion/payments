@@ -12,6 +12,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../services/password.service';
+import { canonicalizeEmailTransform } from '../utils/canonicalize-email.util';
 
 const EMAIL_MAX_LENGTH = 320; // matches User.email @db.VarChar(320)
 const DISPLAY_NAME_MAX_LENGTH = 160;
@@ -36,7 +37,7 @@ function trimAndUppercase({ value }: { value: unknown }): unknown {
  */
 export class RegisterDto {
   @ApiProperty({ example: 'owner@example.com' })
-  @Transform(trimAndLowercase)
+  @Transform(canonicalizeEmailTransform)
   @IsEmail()
   @MaxLength(EMAIL_MAX_LENGTH)
   email!: string;

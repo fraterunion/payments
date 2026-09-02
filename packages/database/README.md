@@ -163,7 +163,13 @@ under `prisma/migrations/`, consistent with
 requirement that production migrations be generated and reviewed, not
 pushed. The initial migration is named `init_core_tenancy`; authentication
 credentials and session-rotation fields were added in
-`add_authentication_credentials`.
+`add_authentication_credentials`. Canonical email uniqueness — a functional
+unique index on `LOWER(users.email)` — was added in
+`enforce_canonical_email_uniqueness`. Prisma cannot declare expression
+indexes in `schema.prisma`, so that invariant is maintained in the
+migration SQL. The Prisma `@unique` on `User.email` is retained so
+`findUnique` / `upsert` still resolve by the canonical value the
+application always writes.
 
 Before committing a migration:
 
@@ -264,7 +270,13 @@ through that status rather than a parallel `deletedAt` column.
 Indexes were added for known query shapes, not speculatively:
 
 - `Organization`: `status`, `type` — operator/admin filtering.
-- `User`: `status` — admin filtering.
+- `User`: `status` — admin filtering. Email uniqueness is two complementary
+  indexes: Prisma's byte-for-byte `users_email_key` (`@unique`, required
+  for `findUnique` / `upsert`) and the SQL-only functional unique index
+  `users_email_lower_uidx` on `LOWER(email)`. The functional index is not
+  representable in `schema.prisma` and is therefore not declared there;
+  `prisma migrate diff` against a database that has it produces an empty
+  script, so normal Prisma workflows do not try to drop it.
 - `OrganizationMembership`: `organizationId`, `userId` (plus the
   `(organizationId, userId)` unique constraint, which already indexes that
   pair — no redundant composite index added).
@@ -287,7 +299,9 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
 **Database-enforced today:**
 
 - UUID primary keys and foreign key integrity.
-- Uniqueness: `Organization.slug`, `User.email`,
+- Uniqueness: `Organization.slug`, `User.email` (byte-for-byte
+  `users_email_key`, plus case-insensitive `users_email_lower_uidx` on
+  `LOWER(email)`),
   `(OrganizationMembership.organizationId, userId)`,
   `(ApiKey.organizationId, keyPrefix)`, `ApiKey.secretHash`,
   `Session.tokenHash`, `Session.createdBySessionId`,
@@ -301,10 +315,6 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
 - ISO 4217 currency code validation for `Organization.defaultCurrency`.
 - ISO 3166-1 alpha-2 country code validation for `Organization.countryCode`.
 - IANA timezone identifier validation for `Organization.timezone`.
-- Case-insensitive/canonical email identity for `User.email` — the
-  database's uniqueness check is a byte-for-byte comparison; it does not
-  fold case or normalize look-alike addresses, so two emails differing
-  only by case are treated as distinct by the database today.
 - API-key scope vocabulary — `ApiKey.scopes` accepts arbitrary strings at
   the database level.
 - "At least one valid actor category" for `AuditLog` — `actorUserId` and
@@ -319,6 +329,27 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
 None of the database-level constraints above are a substitute for these
 checks; they exist to prevent structurally invalid data (duplicate keys,
 dangling references), not to validate external standards.
+
+### Canonical email uniqueness
+
+Application write paths store `User.email` in canonical form: trim
+surrounding whitespace and lowercase. They do **not** apply
+provider-specific alias rules (Gmail dot-insensitivity, plus-address
+rewriting) or extra Unicode normalization.
+
+PostgreSQL additionally enforces that two emails differing only by case
+cannot coexist, via `users_email_lower_uidx`:
+
+```sql
+CREATE UNIQUE INDEX "users_email_lower_uidx" ON "users" (LOWER("email"));
+```
+
+Direct database writes therefore cannot create `owner@example.com` and
+`Owner@Example.com` as different users. The `enforce_canonical_email_uniqueness`
+migration fails loudly if case-variant duplicates already exist; it never
+merges accounts or deletes related rows. The Prisma `@unique` on `email`
+is kept (not replaced) so the client can still look up the canonical
+value by exact match.
 
 ## Security constraints
 

@@ -7,7 +7,7 @@ implemented in `apps/api/src/auth` and `apps/api/src/audit`. Authoritative
 for how this system behaves today; not a promise about future phases (see
 [Deferred features](#deferred-features)).
 
-Last updated: 2026-08-08
+Last updated: 2026-09-01
 
 ## Scope
 
@@ -648,21 +648,25 @@ half-implementing a security-sensitive feature under time pressure.
 
 ## Normalization and validation
 
-- **Email**: trimmed and lowercased (`class-transformer`'s `@Transform`,
-  applied before `class-validator`'s `@IsEmail` runs). No provider-specific
-  canonicalization (for example, Gmail's dot-insensitivity) — two emails
-  differing only by dots are treated as distinct, as they are by every
-  provider except Gmail's own webmail UI. **Database uniqueness on
-  `User.email` is a byte-for-byte Postgres comparison** — it does not fold
-  case itself. Because every write path normalizes first, this is safe
-  under this application's own code, but a hypothetical direct database
-  write bypassing the application would not be caught by a database-level
-  constraint. Adding a case-insensitive unique index was considered and
-  deliberately deferred: it would need to be hand-written as raw SQL
-  (Prisma's schema DSL has no functional/expression-index support), adding
-  migration complexity for a gap that only matters if something bypasses
-  the application layer entirely. Documented here as a known limitation to
-  revisit, not silently assumed safe.
+- **Email**: trimmed and lowercased by the shared
+  `canonicalizeEmail` helper (`apps/api/src/auth/utils/canonicalize-email.util.ts`),
+  applied via `class-transformer`'s `@Transform` on both `RegisterDto` and
+  `LoginDto` before `class-validator`'s `@IsEmail` runs. No
+  provider-specific canonicalization (for example, Gmail's
+  dot-insensitivity or plus-alias rewriting) — two emails differing only
+  by dots or `+tags` are treated as distinct. Login looks up the
+  already-canonical value; it does not use `LOWER(email)` as the normal
+  query path. **PostgreSQL additionally enforces case-insensitive
+  uniqueness** with the functional unique index `users_email_lower_uidx`
+  (`CREATE UNIQUE INDEX ... ON users (LOWER(email))`), so a direct
+  database write cannot create `owner@example.com` and `Owner@Example.com`
+  as different identities. Prisma cannot declare expression indexes in
+  `schema.prisma`; that index lives only in the
+  `enforce_canonical_email_uniqueness` migration. The Prisma `@unique` on
+  `User.email` is retained so `findUnique` / `upsert` still resolve by the
+  canonical value the application always writes. A case-only duplicate
+  registration is rejected with the same generic `409` as an exact
+  duplicate — never with index names, Prisma codes, or SQL fragments.
 - **Organization slug**: trimmed, lowercased, `^[a-z0-9]+(-[a-z0-9]+)*$`,
   3–63 characters.
 - **Currency / country / timezone**: `class-validator`'s built-in
@@ -708,8 +712,6 @@ Explicitly out of scope for this commit:
   flow.
 - Actual cookie-based token transport (see [Cookies](#cookies) — the
   configuration surface exists, the transport does not).
-- A case-insensitive database-level uniqueness constraint on `User.email`
-  (see [Normalization and validation](#normalization-and-validation)).
 - Payment-related API-key scopes (reserved conceptually, not present in
   `API_KEY_SCOPES` — see [Scopes](#scopes-api-key-principals)).
 

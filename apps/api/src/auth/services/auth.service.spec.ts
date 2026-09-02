@@ -167,6 +167,25 @@ describe('AuthService.register', () => {
 
     await expect(service.register(VALID_REGISTER_DTO, {})).rejects.toThrow(ConflictException);
   });
+
+  it('maps a functional LOWER(email) unique-index violation to the same generic conflict', async () => {
+    const db = createFakeDb();
+    db.user.findUnique.mockResolvedValue(null);
+    db.organization.findUnique.mockResolvedValue(null);
+    db.user.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: { target: ['lower(email::text'] },
+      }),
+    );
+    const { service } = createDeps(db);
+
+    await expect(service.register(VALID_REGISTER_DTO, {})).rejects.toMatchObject({
+      message: 'This email or organization slug is already in use.',
+    });
+    expect(db.user.create).toHaveBeenCalled();
+  });
 });
 
 describe('AuthService.login', () => {
