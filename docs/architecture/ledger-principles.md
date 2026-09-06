@@ -2,14 +2,13 @@
 
 ## Status
 
-Authoritative on principles and invariants; conceptual on entities,
-account categories, and examples. No ledger schema is implemented yet, and
-none is defined by this document. The chart of accounts and exact
-debit/credit orientation shown here are illustrative and will be validated
-before implementation — see the caveat before the [Examples](#examples)
-section.
+Authoritative on principles and invariants. The engine schema is
+implemented; see [`ledger.md`](./ledger.md). Chart-of-account _business_
+roles (provider receivable, fees, settlement) remain illustrative until
+Payment/Refund posting. This document does not claim GAAP/IFRS
+certification.
 
-Last updated: 2026-08-06
+Last updated: 2026-09-06
 
 ## Core principles
 

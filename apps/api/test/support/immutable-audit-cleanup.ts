@@ -26,9 +26,10 @@ export type TenantCleanupTarget = {
  * Does **not** sweep the entire live namespace — parallel Jest workers share
  * this database and must not delete each other's in-flight fixtures.
  *
- * Order respects RESTRICT FKs: mappings → refunds → payments →
- * idempotency records → customers → outbox/inbox → API keys → audit
- * (trigger disabled only for this delete) → users → organizations.
+ * Order respects RESTRICT FKs: ledger entries/transactions/accounts
+ * (triggers disabled only for this delete) → mappings → refunds →
+ * payments → idempotency records → customers → outbox/inbox → API keys
+ * → audit (trigger disabled only for this delete) → users → organizations.
  */
 export async function deleteTenantsForTests(
   db: PrismaClient,
@@ -41,6 +42,7 @@ export async function deleteTenantsForTests(
   }
 
   await deleteAuditLogsForTests(db, targets);
+  await deleteLedgerForTests(db, targets);
 
   if (targets.organizationIds.length > 0) {
     const orgFilter = { organizationId: { in: [...targets.organizationIds] } };
@@ -143,6 +145,32 @@ async function resolveCleanupTargets(
     organizationIds: [...organizationIdSet],
     userIds: [...userIdSet],
   };
+}
+
+async function deleteLedgerForTests(db: PrismaClient, targets: TenantCleanupTarget): Promise<void> {
+  if (targets.organizationIds.length === 0) {
+    return;
+  }
+
+  await db.$executeRaw`SELECT pg_advisory_lock(87236402)`;
+  let disabled = false;
+  try {
+    await db.$executeRaw`ALTER TABLE ledger_entries DISABLE TRIGGER USER`;
+    await db.$executeRaw`ALTER TABLE ledger_transactions DISABLE TRIGGER USER`;
+    await db.$executeRaw`ALTER TABLE ledger_accounts DISABLE TRIGGER USER`;
+    disabled = true;
+    const orgFilter = { organizationId: { in: [...targets.organizationIds] } };
+    await db.ledgerEntry.deleteMany({ where: orgFilter });
+    await db.ledgerTransaction.deleteMany({ where: orgFilter });
+    await db.ledgerAccount.deleteMany({ where: orgFilter });
+  } finally {
+    if (disabled) {
+      await db.$executeRaw`ALTER TABLE ledger_accounts ENABLE TRIGGER USER`;
+      await db.$executeRaw`ALTER TABLE ledger_transactions ENABLE TRIGGER USER`;
+      await db.$executeRaw`ALTER TABLE ledger_entries ENABLE TRIGGER USER`;
+    }
+    await db.$executeRaw`SELECT pg_advisory_unlock(87236402)`;
+  }
 }
 
 async function deleteAuditLogsForTests(

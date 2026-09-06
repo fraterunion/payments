@@ -5,7 +5,7 @@ idempotency. Implemented in `apps/api/src/idempotency` with persistence on
 `idempotency_records`. This is not provider-operation idempotency and not
 a public management API.
 
-Last updated: 2026-09-02
+Last updated: 2026-09-06
 
 ## Two layers
 
@@ -55,14 +55,18 @@ refund.create
 provider.account.create
 ```
 
-Reserved for future provider orchestration (not publicly callable):
+Reserved / internal (not public HTTP):
 
 ```text
 payment.authorize
 payment.capture
 payment.cancel
 refund.execute
+ledger.transaction.post
 ```
+
+`ledger.transaction.post` is used by the internal ledger posting service.
+There is no public ledger write endpoint.
 
 There are no Stripe-specific scopes (`stripe.account.create` is not
 registered) and no `GET`/`POST /idempotency` endpoints. There are no
@@ -78,7 +82,7 @@ idempotency_records
   scope
   keyHash             SHA-256 of the trimmed Idempotency-Key
   requestFingerprint  SHA-256 of canonical command JSON
-  resourceType        payment | refund | connection
+  resourceType        payment | refund | connection | ledgertransaction
   resourceId          durable subject/result UUID
   status              IN_PROGRESS | COMPLETED
   createdAt

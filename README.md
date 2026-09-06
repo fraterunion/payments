@@ -23,10 +23,12 @@ refunds (create/get/list plus internal lifecycle, without provider
 execution), durable financial-command idempotency, an isolated Stripe provider adapter,
 and organization-owned Stripe connected-account onboarding
 (`ProviderAccountConnection`). Inbound Stripe webhook ingestion verifies
-signatures and persists durable `InboxEvent` receipts; it does not yet
-normalize payment domain events. Public Payment/Refund APIs are not wired
-to Stripe yet. Ledger posting, reconciliation, billing, and outbound
-organization webhooks are not implemented yet.
+signatures, persists durable `InboxEvent` receipts, and applies
+normalized Payment/Refund observations. Public Payment/Refund APIs are
+not wired to Stripe yet. The append-only double-entry ledger engine
+exists; Payment/Refund transitions do not post entries yet.
+Reconciliation, billing, and outbound organization webhooks are not
+implemented yet.
 
 ## Monorepo structure
 
@@ -42,6 +44,7 @@ packages/
   database/             PostgreSQL/Prisma schema and client
   events/               Transactional outbox and durable inbox (provider-agnostic)
   eslint-config/        Shared ESLint flat configs (base, next, node)
+  ledger-core/          Provider-neutral double-entry ledger domain
   payment-application/  Financial inbox orchestration (events + stripe + payment-core)
   payment-core/         Provider-independent payment domain (money, states, refunds)
   provider-contracts/   Provider interface, capabilities, and registry
@@ -94,6 +97,8 @@ implementation must follow them, not the other way around.
   normalized payment state machine and failure/refund handling.
 - [Subscription lifecycle](docs/architecture/subscription-lifecycle.md) —
   design constraints for future recurring billing.
+- [Ledger](docs/architecture/ledger.md) — append-only double-entry engine
+  (no automatic Payment/Refund posting yet).
 - [Ledger principles](docs/architecture/ledger-principles.md) — double-entry
   accounting principles, invariants, and reconciliation.
 

@@ -5,7 +5,7 @@ aggregate and its application/API lifecycle. Implemented in
 `packages/database` (schema) and `apps/api/src/payments`. Domain rules
 remain in `@fraterunion-payments/payment-core`.
 
-Last updated: 2026-09-02
+Last updated: 2026-09-06
 
 ## Canonical payment vs provider execution
 
@@ -253,6 +253,12 @@ payloads, or secrets.
 registry has no payment-domain consumer. Enqueueing `payment.*` events
 today would claim them and mark them `FAILED`. Event emission belongs
 with provider orchestration and a concrete consumer.
+
+## Ledger
+
+The append-only double-entry engine exists
+([`ledger.md`](./ledger.md)). Payment lifecycle transitions still write
+**zero** ledger entries. Automatic posting is a later commit.
 
 ## Failure persistence
 

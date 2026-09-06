@@ -18,8 +18,9 @@ connected-account onboarding (`ProviderAccountConnection`; see
 and [`stripe-connect.md`](./stripe-connect.md)). Durable Stripe webhook
 ingestion persists verified `InboxEvent` receipts
 ([`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md)); payment
-normalization from those events is not implemented yet. Public Payment/Refund
-APIs are not yet wired to Stripe. See the root
+normalization from those events is implemented. The append-only ledger
+engine exists; Payment/Refund transitions do not post entries yet. Public
+Payment/Refund APIs are not yet wired to Stripe. See the root
 [`README.md`](../../README.md). This document still defines the broader
 target shape later commits build toward.
 
@@ -47,9 +48,9 @@ Last updated: 2026-09-02
   versioned REST API consumer products and the Admin app use.
 - **Worker** — the standalone Node.js process that polls the
   transactional outbox in PostgreSQL, claims work with
-  `FOR UPDATE SKIP LOCKED`, and dispatches registered handlers. Future
-  commits will add inbox-driven webhook processing and billing
-  scheduling.
+  `FOR UPDATE SKIP LOCKED`, and dispatches registered handlers. Inbox
+  processing of Stripe financial events is implemented; billing
+  scheduling is not.
 - **PostgreSQL** — the system of record for domain and ledger data, and
   the durable store for the transactional outbox and inbox (ADR-007).
 - **Redis or future queue infrastructure** — not used for outbox/inbox

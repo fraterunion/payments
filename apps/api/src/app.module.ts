@@ -12,6 +12,7 @@ import { AppConfigModule } from './config/app-config.module';
 import type { Environment } from './config/environment.types';
 import { buildLoggerOptions } from './config/logger.options';
 import { HealthModule } from './health/health.module';
+import { LedgerModule } from './ledger/ledger.module';
 import { RootModule } from './root/root.module';
 
 @Module({})
@@ -39,6 +40,7 @@ export class AppModule {
         PaymentsModule,
         RefundsModule,
         ProviderConnectionsModule,
+        LedgerModule,
         StripeWebhooksModule,
       ],
       providers: [{ provide: APP_FILTER, useClass: GlobalExceptionFilter }],

@@ -973,13 +973,36 @@ if (databaseUrl === undefined) {
       );
     });
 
-    it('does not create ledger tables while applying provider observations', async () => {
+    it('does not post ledger rows while applying provider observations', async () => {
       const tables = await db.$queryRaw<Array<{ tablename: string }>>`
         SELECT tablename FROM pg_tables
         WHERE schemaname = 'public'
-          AND tablename IN ('ledger_entries', 'ledger_accounts', 'journal_entries')
+          AND tablename IN ('ledger_entries', 'ledger_accounts', 'ledger_transactions', 'journal_entries')
+        ORDER BY tablename
       `;
-      expect(tables).toEqual([]);
+      expect(tables.map((row) => row.tablename)).toEqual([
+        'ledger_accounts',
+        'ledger_entries',
+        'ledger_transactions',
+      ]);
+      const { organizationId } = await registerOrg();
+      const payment = await authorizingPayment(organizationId);
+      const pi = `pi_noledger_${randomUUID().slice(0, 8)}`;
+      await bindPayment(organizationId, payment.id, pi);
+      const beforeTx = await db.ledgerTransaction.count({ where: { organizationId } });
+      const beforeEntry = await db.ledgerEntry.count({ where: { organizationId } });
+      await processor.process(
+        await ingestAndClaim(
+          stripeFinancialEvent('payment_intent.succeeded', stripePaymentIntentObject({ id: pi }), {
+            id: `evt_fup_norm_noledger_${randomUUID().slice(0, 8)}`,
+          }),
+        ),
+      );
+      expect((await db.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe(
+        'SUCCEEDED',
+      );
+      expect(await db.ledgerTransaction.count({ where: { organizationId } })).toBe(beforeTx);
+      expect(await db.ledgerEntry.count({ where: { organizationId } })).toBe(beforeEntry);
     });
   },
 );

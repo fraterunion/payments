@@ -15,6 +15,7 @@ export const IDEMPOTENCY_SCOPES = {
   REFUND_CREATE: 'refund.create',
   REFUND_EXECUTE: 'refund.execute',
   PROVIDER_ACCOUNT_CREATE: 'provider.account.create',
+  LEDGER_TRANSACTION_POST: 'ledger.transaction.post',
 } as const;
 
 export type IdempotencyScope = (typeof IDEMPOTENCY_SCOPES)[keyof typeof IDEMPOTENCY_SCOPES];
@@ -31,6 +32,7 @@ export const IDEMPOTENCY_RESOURCE_TYPES = {
   PAYMENT: 'payment',
   REFUND: 'refund',
   CONNECTION: 'connection',
+  LEDGERTRANSACTION: 'ledgertransaction',
 } as const;
 
 export type IdempotencyResourceType =

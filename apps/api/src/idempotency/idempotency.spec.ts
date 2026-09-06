@@ -53,6 +53,9 @@ describe('financial idempotency primitives', () => {
     expect(asIdempotencyScope('provider.account.create')).toBe(
       IDEMPOTENCY_SCOPES.PROVIDER_ACCOUNT_CREATE,
     );
+    expect(asIdempotencyScope('ledger.transaction.post')).toBe(
+      IDEMPOTENCY_SCOPES.LEDGER_TRANSACTION_POST,
+    );
     expect(() => asIdempotencyScope('stripe.charge')).toThrow(/registered/);
     expect(() => asIdempotencyScope('Payment.Create')).toThrow(/lowercase/);
     expect(() => asIdempotencyScope('payment.create\n')).toThrow(/lowercase/);
@@ -62,6 +65,7 @@ describe('financial idempotency primitives', () => {
   it('rejects unregistered resource types', () => {
     expect(asIdempotencyResourceType('payment')).toBe('payment');
     expect(asIdempotencyResourceType('connection')).toBe('connection');
+    expect(asIdempotencyResourceType('ledgertransaction')).toBe('ledgertransaction');
     expect(() => asIdempotencyResourceType('PaymentIntent')).toThrow();
     expect(() => asIdempotencyResourceType('stripe_refund')).toThrow();
   });

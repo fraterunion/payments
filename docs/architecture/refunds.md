@@ -5,7 +5,7 @@ aggregate, refund capacity reservation, and create/get/list API.
 Implemented in `packages/database` (schema) and `apps/api/src/refunds`.
 Domain rules remain in `@fraterunion-payments/payment-core`.
 
-Last updated: 2026-09-02
+Last updated: 2026-09-06
 
 ## Canonical refund vs provider execution
 
@@ -297,6 +297,9 @@ secrets.
 payment-refund consumer. Enqueueing `refund.*` /
 `payment.partially_refunded` / `payment.refunded` today would
 dead-letter. Event emission belongs with provider orchestration.
+
+Refund success still writes **zero** ledger entries. See
+[`ledger.md`](./ledger.md).
 
 ## Failure persistence
 

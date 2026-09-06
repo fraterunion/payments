@@ -18,6 +18,9 @@ export {
   RefundReason,
   IdempotencyRecordStatus,
   ProviderAccountConnectionStatus,
+  LedgerAccountType,
+  LedgerAccountStatus,
+  LedgerEntrySide,
 } from '../generated/client/index.js';
 
 export type {
@@ -38,6 +41,9 @@ export type {
   RefundProviderExecution,
   IdempotencyRecord,
   ProviderAccountConnection,
+  LedgerAccount,
+  LedgerTransaction,
+  LedgerEntry,
 } from '../generated/client/index.js';
 
 export { createPrismaClient } from './client.js';

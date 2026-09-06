@@ -8,9 +8,10 @@ core multi-tenant identity schema: organizations, users, user credentials,
 memberships, API keys, sessions, the audit log, the transactional
 outbox / durable inbox tables, customers, customer-provider mappings,
 canonical payments, canonical refunds, durable financial-operation
-idempotency (`idempotency_records`), and canonical provider-account
-connections (`provider_account_connections`). It intentionally does not
-include ledger or webhook entities — see
+idempotency (`idempotency_records`), canonical provider-account
+connections (`provider_account_connections`), and the append-only
+double-entry ledger (`ledger_accounts`, `ledger_transactions`,
+`ledger_entries`). Webhook HTTP entities remain application-owned — see
 [`../../docs/decisions/ADR-002-postgresql-and-prisma.md`](../../docs/decisions/ADR-002-postgresql-and-prisma.md)
 and
 [`../../docs/decisions/ADR-003-multi-tenant-organization-model.md`](../../docs/decisions/ADR-003-multi-tenant-organization-model.md)
@@ -216,7 +217,12 @@ the `users_email_lower_uidx` precedent. Provider-neutral
 claim columns (`available_at`, `claimed_at`, `claim_expires_at`,
 `claimed_by`, `processing_outcome`) were added in
 `add_provider_financial_executions` (timestamp `20260902220000`). Provider
-object ids never live on `payments` or `refunds`. New migration timestamps
+object ids never live on `payments` or `refunds`. The append-only
+double-entry ledger (`ledger_accounts`, `ledger_transactions`,
+`ledger_entries`) plus identity-immutability triggers and a deferred
+commit-time balance constraint were added in `add_double_entry_ledger`
+(timestamp `20260902230000`). Prisma cannot model those triggers.
+Payment/Refund rows were not changed. New migration timestamps
 must sort after the latest already-committed migration.
 
 Before committing a migration:
@@ -401,6 +407,16 @@ Indexes were added for known query shapes, not speculatively:
 - `ProviderAccountConnection`: unique `(organizationId, provider)`,
   unique `(provider, providerAccountId)`, unique `(id, organizationId)`,
   plus `(organizationId, status)`.
+- `LedgerAccount`: unique `(id, organizationId)`, unique
+  `(organizationId, code)`, plus `(organizationId, status, createdAt)`
+  and `(organizationId, currency, createdAt)`.
+- `LedgerTransaction`: unique `(id, organizationId)`, plus
+  `(organizationId, postedAt)`, `(organizationId, transactionType, postedAt)`,
+  `(organizationId, referenceType, referenceId)`, and
+  `(organizationId, currency, postedAt)`.
+- `LedgerEntry`: `(organizationId, ledgerAccountId)` and
+  `(ledgerTransactionId)`. Composite FKs bind each entry to the same
+  organization as its transaction and account.
 
 ## Database-enforced vs. application-enforced validation
 
@@ -451,6 +467,15 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
 - Provider-account CHECKs in `add_provider_account_connections`: provider
   shape, non-empty `provider_account_id`, and `ACTIVE` requires both
   capability booleans. No Stripe-named columns.
+- Ledger invariants in `add_double_entry_ledger`: account code/currency
+  shape, account status/`archivedAt` consistency, transaction type and
+  ISO currency shape, reference both-or-neither, metadata object,
+  not-self-reversal, positive entry amounts, composite tenant FKs,
+  identity-immutability triggers on `ledger_accounts`, append-only
+  triggers on `ledger_transactions` / `ledger_entries` (including
+  `TRUNCATE`), and a deferred constraint trigger that requires each
+  posted transaction to have at least two entries with equal debit and
+  credit sums before `COMMIT`. Prisma cannot model those triggers.
 - Audit immutability in `enforce_immutable_audit_logs`:
   `BEFORE UPDATE OR DELETE` (and `BEFORE TRUNCATE`) raises
   `audit_logs is append-only`; CHECK constraints forbid both actor FKs,

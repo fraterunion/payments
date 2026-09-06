@@ -23,7 +23,9 @@ This system implements:
 - Audit logging of security-sensitive operations.
 
 It does **not** implement provider accounts, Stripe integration, webhooks,
-or ledger entries — those remain out of scope until their own commits.
+or public ledger HTTP endpoints. Internal ledger services reuse this
+auth model when a user or API key is present; automated posting does
+not require a User actor.
 Customers and canonical payments use this auth model. See
 [Deferred features](#deferred-features) for security features explicitly
 not yet implemented (MFA, password reset, and so on).

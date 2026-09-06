@@ -180,6 +180,30 @@ enum IdempotencyRecordStatus {
   @@map("idempotency_record_status")
 }
 
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+
+  @@map("ledger_account_type")
+}
+
+enum LedgerAccountStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("ledger_account_status")
+}
+
+enum LedgerEntrySide {
+  DEBIT
+  CREDIT
+
+  @@map("ledger_entry_side")
+}
+
 /// Canonical merchant-processor connection readiness. These are not Stripe
 /// account status strings. Semantics:
 /// - PENDING: provider account exists; required capabilities are not yet
@@ -254,6 +278,9 @@ model Organization {
   refundProviderExecutions   RefundProviderExecution[]
   idempotencyRecords         IdempotencyRecord[]
   providerAccountConnections ProviderAccountConnection[]
+  ledgerAccounts             LedgerAccount[]
+  ledgerTransactions         LedgerTransaction[]
+  ledgerEntries              LedgerEntry[]
 
   @@index([status])
   @@index([type])
@@ -958,4 +985,89 @@ model RefundProviderExecution {
   @@index([organizationId, refundId])
   @@index([paymentProviderExecutionId])
   @@map("refund_provider_executions")
+}
+
+/// Organization-owned ledger account. Currency is fixed at creation.
+/// `type` and `code` are immutable. Normal balance is derived from type
+/// and is not persisted. Prisma cannot express append-only account-identity
+/// triggers or status/archive CHECKs; those live in
+/// `add_double_entry_ledger`.
+model LedgerAccount {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  code     String              @db.VarChar(64)
+  name     String              @db.VarChar(200)
+  type     LedgerAccountType
+  currency String              @db.VarChar(3)
+  status   LedgerAccountStatus @default(ACTIVE)
+
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  entries      LedgerEntry[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, code], map: "ledger_accounts_org_code_uidx")
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, currency, createdAt])
+  @@map("ledger_accounts")
+}
+
+/// Posted double-entry journal. Existence means posted and immutable.
+/// Corrections are additional transactions (`reversesLedgerTransactionId`
+/// is an optional pointer, not an in-place void). Prisma cannot express
+/// append-only triggers or the deferred balance constraint; those live in
+/// `add_double_entry_ledger`.
+model LedgerTransaction {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  transactionType String  @map("transaction_type") @db.VarChar(64)
+  referenceType   String? @map("reference_type") @db.VarChar(64)
+  referenceId     String? @map("reference_id") @db.VarChar(128)
+  currency        String  @db.VarChar(3)
+  description     String? @db.VarChar(500)
+  metadata        Json    @default("{}")
+
+  reversesLedgerTransactionId String? @map("reverses_ledger_transaction_id") @db.Uuid
+
+  postedAt  DateTime @default(now()) @map("posted_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  reverses     LedgerTransaction?  @relation("LedgerReversal", fields: [reversesLedgerTransactionId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  reversedBy   LedgerTransaction[] @relation("LedgerReversal")
+  entries      LedgerEntry[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, postedAt], map: "ledger_transactions_org_posted_idx")
+  @@index([organizationId, transactionType, postedAt], map: "ledger_transactions_org_type_posted_idx")
+  @@index([organizationId, referenceType, referenceId], map: "ledger_transactions_org_ref_idx")
+  @@index([organizationId, currency, postedAt], map: "ledger_transactions_org_currency_posted_idx")
+  @@map("ledger_transactions")
+}
+
+/// Immutable debit or credit line. Amount is a positive BIGINT minor unit.
+/// Currency is implied by the parent transaction and account. Composite
+/// tenant FKs prevent cross-organization posting.
+model LedgerEntry {
+  id                  String          @id @default(uuid(7)) @db.Uuid
+  organizationId      String          @map("organization_id") @db.Uuid
+  ledgerTransactionId String          @map("ledger_transaction_id") @db.Uuid
+  ledgerAccountId     String          @map("ledger_account_id") @db.Uuid
+  side                LedgerEntrySide
+  amount              BigInt
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  transaction  LedgerTransaction @relation(fields: [ledgerTransactionId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  account      LedgerAccount     @relation(fields: [ledgerAccountId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@index([organizationId, ledgerAccountId])
+  @@index([ledgerTransactionId])
+  @@map("ledger_entries")
 }

@@ -154,4 +154,7 @@ Query paths are tenant-scoped, so indexes are org-prefixed:
 [ADR-006](../decisions/ADR-006-append-only-double-entry-ledger.md) uses
 the same correction model for money: never edit a posted row; write a
 new compensating record. Audit applies that idea to security evidence.
-The ledger is not implemented in this commit.
+The ledger engine is implemented ([`ledger.md`](./ledger.md)). Posted
+ledger transactions are not also written to AuditLog. Account
+create/archive are audited. Payment/Refund transitions still do not
+post ledger entries.

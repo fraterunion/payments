@@ -286,9 +286,10 @@ never stored.
 
 ## Ledger and outbox
 
-This commit writes **zero** ledger entries and does **not** enqueue
-`payment.succeeded` / `refund.succeeded` outbox events. Ledger is the
-next commit.
+The ledger engine exists ([`ledger.md`](./ledger.md)). This webhook path
+still writes **zero** ledger entries and does **not** enqueue
+`payment.succeeded` / `refund.succeeded` outbox events. Automatic
+Payment/Refund posting is a later commit.
 
 ## Public API
 

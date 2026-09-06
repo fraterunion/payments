@@ -42,6 +42,8 @@ export const AUDIT_ACTIONS = {
   PROVIDER_CONNECTION_ONBOARDING_LINK_CREATED: 'provider_connection.onboarding_link_created',
   PROVIDER_CONNECTION_REFRESHED: 'provider_connection.refreshed',
   PROVIDER_CONNECTION_STATUS_CHANGED: 'provider_connection.status_changed',
+  LEDGER_ACCOUNT_CREATED: 'ledger.account.created',
+  LEDGER_ACCOUNT_ARCHIVED: 'ledger.account.archived',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS] | (string & {});
@@ -58,6 +60,7 @@ export const AUDIT_RESOURCE_TYPES = {
   PAYMENT_PROVIDER_EXECUTION: 'payment_provider_execution',
   REFUND_PROVIDER_EXECUTION: 'refund_provider_execution',
   PROVIDER_ACCOUNT_CONNECTION: 'provider_account_connection',
+  LEDGER_ACCOUNT: 'ledger_account',
 } as const;
 
 export type AuditResourceType =
