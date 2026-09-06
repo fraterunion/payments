@@ -18,8 +18,9 @@ connected-account onboarding (`ProviderAccountConnection`; see
 and [`stripe-connect.md`](./stripe-connect.md)). Durable Stripe webhook
 ingestion persists verified `InboxEvent` receipts
 ([`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md)); payment
-normalization from those events is implemented. The append-only ledger
-engine exists; Payment/Refund transitions do not post entries yet. Public
+normalization from those events is implemented. Successful captured
+Payments and succeeded Refunds post operational clearing journals; see
+[`payment-ledger-posting.md`](./payment-ledger-posting.md). Public
 Payment/Refund APIs are not yet wired to Stripe. See the root
 [`README.md`](../../README.md). This document still defines the broader
 target shape later commits build toward.

@@ -14,6 +14,8 @@ describe('payment-application package', () => {
     expect(pkg.dependencies?.['@fraterunion-payments/provider-stripe']).toBe('workspace:*');
     expect(pkg.dependencies?.['@fraterunion-payments/payment-core']).toBe('workspace:*');
     expect(pkg.dependencies?.['@fraterunion-payments/database']).toBe('workspace:*');
+    expect(pkg.dependencies?.['@fraterunion-payments/ledger-application']).toBe('workspace:*');
+    expect(pkg.dependencies?.['@fraterunion-payments/ledger-core']).toBe('workspace:*');
   });
 
   it('exports the Stripe financial inbox processor', async () => {

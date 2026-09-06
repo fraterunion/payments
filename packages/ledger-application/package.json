@@ -1,5 +1,5 @@
 {
-  "name": "@fraterunion-payments/payment-application",
+  "name": "@fraterunion-payments/ledger-application",
   "version": "0.0.0",
   "private": true,
   "license": "UNLICENSED",
@@ -20,11 +20,8 @@
   },
   "dependencies": {
     "@fraterunion-payments/database": "workspace:*",
-    "@fraterunion-payments/events": "workspace:*",
-    "@fraterunion-payments/ledger-application": "workspace:*",
     "@fraterunion-payments/ledger-core": "workspace:*",
-    "@fraterunion-payments/payment-core": "workspace:*",
-    "@fraterunion-payments/provider-stripe": "workspace:*"
+    "@fraterunion-payments/payment-core": "workspace:*"
   },
   "devDependencies": {
     "@fraterunion-payments/eslint-config": "workspace:*",

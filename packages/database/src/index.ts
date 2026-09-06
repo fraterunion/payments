@@ -21,6 +21,7 @@ export {
   LedgerAccountType,
   LedgerAccountStatus,
   LedgerEntrySide,
+  LedgerAccountBindingRole,
 } from '../generated/client/index.js';
 
 export type {
@@ -44,6 +45,7 @@ export type {
   LedgerAccount,
   LedgerTransaction,
   LedgerEntry,
+  LedgerAccountBinding,
 } from '../generated/client/index.js';
 
 export { createPrismaClient } from './client.js';

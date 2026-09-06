@@ -157,15 +157,18 @@ async function deleteLedgerForTests(db: PrismaClient, targets: TenantCleanupTarg
   try {
     await db.$executeRaw`ALTER TABLE ledger_entries DISABLE TRIGGER USER`;
     await db.$executeRaw`ALTER TABLE ledger_transactions DISABLE TRIGGER USER`;
+    await db.$executeRaw`ALTER TABLE ledger_account_bindings DISABLE TRIGGER USER`;
     await db.$executeRaw`ALTER TABLE ledger_accounts DISABLE TRIGGER USER`;
     disabled = true;
     const orgFilter = { organizationId: { in: [...targets.organizationIds] } };
     await db.ledgerEntry.deleteMany({ where: orgFilter });
     await db.ledgerTransaction.deleteMany({ where: orgFilter });
+    await db.ledgerAccountBinding.deleteMany({ where: orgFilter });
     await db.ledgerAccount.deleteMany({ where: orgFilter });
   } finally {
     if (disabled) {
       await db.$executeRaw`ALTER TABLE ledger_accounts ENABLE TRIGGER USER`;
+      await db.$executeRaw`ALTER TABLE ledger_account_bindings ENABLE TRIGGER USER`;
       await db.$executeRaw`ALTER TABLE ledger_transactions ENABLE TRIGGER USER`;
       await db.$executeRaw`ALTER TABLE ledger_entries ENABLE TRIGGER USER`;
     }

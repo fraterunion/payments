@@ -100,6 +100,12 @@ services. They:
 Public `POST /payments` still does not create Stripe PaymentIntents or
 executions.
 
+Successful executions supply the provider and `providerAccountScope`
+used by [`payment-ledger-posting.md`](./payment-ledger-posting.md).
+Ledger journals reference the canonical Payment/Refund UUID and may
+include the internal execution UUID in metadata. They never use
+`pi_…` / `re_…` as ledger identity.
+
 ## Audit
 
 Execution binding is a durable financial association, so create is

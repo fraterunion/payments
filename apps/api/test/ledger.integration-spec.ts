@@ -155,6 +155,9 @@ if (databaseUrl === undefined) {
     });
 
     it('applies every migration on a fresh database, seeds, and posts a balanced journal', async () => {
+      if (databaseUrl === undefined) {
+        throw new Error('DATABASE_URL must be set');
+      }
       const databaseDir = resolve(__dirname, '../../../packages/database');
       const freshName = `fup_led_fresh_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
       const adminUrl = new URL(databaseUrl);
@@ -218,6 +221,41 @@ if (databaseUrl === undefined) {
         expect(typeof totals[0]?.debit_total).toBe('bigint');
         expect(totals[0]?.debit_total).toBe(10000n);
         expect(totals[0]?.credit_total).toBe(0n);
+
+        const payment = await fresh.payment.create({
+          data: {
+            organizationId: org.id,
+            status: 'SUCCEEDED',
+            captureMethod: 'AUTOMATIC',
+            currency: 'USD',
+            requestedAmount: 10000n,
+            authorizedAmount: 10000n,
+            capturedAmount: 10000n,
+          },
+        });
+        const execution = await fresh.paymentProviderExecution.create({
+          data: {
+            organizationId: org.id,
+            paymentId: payment.id,
+            provider: 'stripe',
+            providerAccountScope: 'default',
+            providerPaymentId: `pi_fresh_${randomUUID().slice(0, 8)}`,
+          },
+        });
+        const { ensurePaymentCaptureLedgerPosting } =
+          await import('@fraterunion-payments/payment-application');
+        await fresh.$transaction((tx) =>
+          ensurePaymentCaptureLedgerPosting(tx, {
+            organizationId: org.id,
+            payment,
+            paymentProviderExecution: execution,
+          }),
+        );
+        expect(
+          await fresh.ledgerTransaction.count({
+            where: { organizationId: org.id, transactionType: 'payment.capture' },
+          }),
+        ).toBe(1);
       } finally {
         await fresh.$disconnect();
         await admin.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${freshName}"`);
@@ -532,7 +570,7 @@ if (databaseUrl === undefined) {
       return inbox.beginProcessing(db, row.id);
     }
 
-    it('does not post ledger rows when Payment or Refund succeed via webhooks', async () => {
+    it('posts capture and refund journals when Payment or Refund succeed via webhooks', async () => {
       const organizationId = await registerOrg();
       const created = await payments.create(
         {
@@ -599,8 +637,13 @@ if (databaseUrl === undefined) {
       const updatedPayment = await db.payment.findFirstOrThrow({ where: { id: payment.id } });
       expect(updatedRefund.status).toBe('SUCCEEDED');
       expect(updatedPayment.refundedAmount).toBe(2500n);
-      expect(await db.ledgerTransaction.count()).toBe(beforeTx);
-      expect(await db.ledgerEntry.count()).toBe(beforeEntry);
+      expect(await db.ledgerTransaction.count()).toBe(beforeTx + 2);
+      expect(await db.ledgerEntry.count()).toBe(beforeEntry + 4);
+      const capture = await db.ledgerTransaction.findFirstOrThrow({
+        where: { organizationId, transactionType: 'payment.capture', referenceId: payment.id },
+        include: { entries: true },
+      });
+      expect(capture.entries.map((entry) => entry.amount)).toEqual([10000n, 10000n]);
     });
   },
 );

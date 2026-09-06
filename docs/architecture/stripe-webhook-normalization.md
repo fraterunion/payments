@@ -286,10 +286,13 @@ never stored.
 
 ## Ledger and outbox
 
-The ledger engine exists ([`ledger.md`](./ledger.md)). This webhook path
-still writes **zero** ledger entries and does **not** enqueue
-`payment.succeeded` / `refund.succeeded` outbox events. Automatic
-Payment/Refund posting is a later commit.
+Successful captured Payments and succeeded Refunds post operational
+clearing journals in the same financial transaction as canonical state,
+audit, and Inbox `PROCESSED`. See
+[`payment-ledger-posting.md`](./payment-ledger-posting.md). This path
+still does **not** enqueue `payment.succeeded` / `refund.succeeded`
+outbox events. Authorization, failed, and canceled observations still
+write zero journals. Provider Event IDs are never ledger identity.
 
 ## Public API
 

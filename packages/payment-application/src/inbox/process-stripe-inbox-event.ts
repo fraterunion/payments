@@ -26,6 +26,8 @@ import {
   STRIPE_PROVIDER_CODE,
   StripeWebhookNormalizeError,
 } from '@fraterunion-payments/provider-stripe';
+import { isLedgerError } from '@fraterunion-payments/ledger-core';
+import { isLedgerApplicationError } from '@fraterunion-payments/ledger-application';
 import {
   InboxService,
   INBOX_PROCESSING_OUTCOMES,
@@ -34,6 +36,8 @@ import {
   type EventWriteClient,
   type InboxProcessingOutcome,
 } from '@fraterunion-payments/events';
+import { ensurePaymentCaptureLedgerPosting } from '../ledger/ensure-payment-capture-posting.js';
+import { ensureRefundLedgerPosting } from '../ledger/ensure-refund-posting.js';
 
 export type StripeInboxAuditWrite = (
   client: EventWriteClient,
@@ -49,6 +53,11 @@ export type StripeInboxAuditWrite = (
 export type ProcessStripeInboxResult = {
   readonly outcome: InboxProcessingOutcome;
   readonly event: InboxEvent;
+};
+
+export type ProcessStripeInboxHooks = {
+  readonly ensurePaymentCaptureLedgerPosting?: typeof ensurePaymentCaptureLedgerPosting;
+  readonly ensureRefundLedgerPosting?: typeof ensureRefundLedgerPosting;
 };
 
 const inbox = new InboxService();
@@ -307,9 +316,13 @@ export async function processStripeInboxEvent(
   options: {
     readonly writeAudit: StripeInboxAuditWrite;
     readonly now?: Date;
+    readonly hooks?: ProcessStripeInboxHooks;
   },
 ): Promise<ProcessStripeInboxResult> {
   const now = options.now ?? new Date();
+  const postCapture =
+    options.hooks?.ensurePaymentCaptureLedgerPosting ?? ensurePaymentCaptureLedgerPosting;
+  const postRefund = options.hooks?.ensureRefundLedgerPosting ?? ensureRefundLedgerPosting;
   return db.$transaction(async (tx) => {
     const lockedInbox = await lockInbox(tx, event.id);
     if (lockedInbox.status === 'PROCESSED') {
@@ -386,45 +399,50 @@ export async function processStripeInboxEvent(
           applied.reason,
         );
       }
-      if (applied.kind === 'NOOP_STALE' || applied.kind === 'NOOP_ALREADY_CURRENT') {
-        const outcome =
-          applied.kind === 'NOOP_STALE'
-            ? INBOX_PROCESSING_OUTCOMES.NOOP_STALE
-            : INBOX_PROCESSING_OUTCOMES.NOOP_ALREADY_CURRENT;
-        const processed = await inbox.markProcessed(tx, lockedInbox.id, now, outcome);
-        return { outcome, event: processed };
+
+      let currentPayment = paymentRow;
+      if (applied.kind === 'APPLIED') {
+        currentPayment = await tx.payment.update({
+          where: { id: paymentRow.id },
+          data: toPaymentUpdate(applied.payment),
+        });
+        const action = paymentAuditAction(applied.toStatus);
+        if (action !== undefined) {
+          await options.writeAudit(tx, {
+            organizationId: currentPayment.organizationId,
+            action,
+            resourceType: 'payment',
+            resourceId: currentPayment.id,
+            metadata: webhookAuditMetadata(lockedInbox, {
+              paymentId: currentPayment.id,
+              providerExecutionId: execution.id,
+              oldStatus: applied.fromStatus,
+              newStatus: applied.toStatus,
+              requestedAmount: currentPayment.requestedAmount.toString(10),
+              authorizedAmount: currentPayment.authorizedAmount.toString(10),
+              capturedAmount: currentPayment.capturedAmount.toString(10),
+              refundedAmount: currentPayment.refundedAmount.toString(10),
+            }),
+          });
+        }
       }
 
-      const updated = await tx.payment.update({
-        where: { id: paymentRow.id },
-        data: toPaymentUpdate(applied.payment),
-      });
-      const action = paymentAuditAction(applied.toStatus);
-      if (action !== undefined) {
-        await options.writeAudit(tx, {
-          organizationId: updated.organizationId,
-          action,
-          resourceType: 'payment',
-          resourceId: updated.id,
-          metadata: webhookAuditMetadata(lockedInbox, {
-            paymentId: updated.id,
-            providerExecutionId: execution.id,
-            oldStatus: applied.fromStatus,
-            newStatus: applied.toStatus,
-            requestedAmount: updated.requestedAmount.toString(10),
-            authorizedAmount: updated.authorizedAmount.toString(10),
-            capturedAmount: updated.capturedAmount.toString(10),
-            refundedAmount: updated.refundedAmount.toString(10),
-          }),
-        });
-      }
-      const processed = await inbox.markProcessed(
-        tx,
-        lockedInbox.id,
-        now,
-        INBOX_PROCESSING_OUTCOMES.APPLIED,
+      await runLedgerPosting(() =>
+        postCapture(tx, {
+          organizationId: execution.organizationId,
+          payment: currentPayment,
+          paymentProviderExecution: execution,
+        }),
       );
-      return { outcome: INBOX_PROCESSING_OUTCOMES.APPLIED, event: processed };
+
+      const outcome =
+        applied.kind === 'APPLIED'
+          ? INBOX_PROCESSING_OUTCOMES.APPLIED
+          : applied.kind === 'NOOP_STALE'
+            ? INBOX_PROCESSING_OUTCOMES.NOOP_STALE
+            : INBOX_PROCESSING_OUTCOMES.NOOP_ALREADY_CURRENT;
+      const processed = await inbox.markProcessed(tx, lockedInbox.id, now, outcome);
+      return { outcome, event: processed };
     }
 
     const refundExecution = await resolveRefundExecution(
@@ -474,83 +492,121 @@ export async function processStripeInboxEvent(
         refundApplied.reason,
       );
     }
-    if (refundApplied.kind === 'NOOP_STALE' || refundApplied.kind === 'NOOP_ALREADY_CURRENT') {
-      const outcome =
-        refundApplied.kind === 'NOOP_STALE'
-          ? INBOX_PROCESSING_OUTCOMES.NOOP_STALE
-          : INBOX_PROCESSING_OUTCOMES.NOOP_ALREADY_CURRENT;
-      const processed = await inbox.markProcessed(tx, lockedInbox.id, now, outcome);
-      return { outcome, event: processed };
-    }
 
-    let nextPayment = toDomainPayment(paymentRow);
-    const refundBecameSucceeded =
-      refundApplied.fromStatus !== REFUND_STATES.SUCCEEDED &&
-      refundApplied.toStatus === REFUND_STATES.SUCCEEDED;
-    if (refundBecameSucceeded) {
-      nextPayment = applyRefund(nextPayment, refundApplied.refund.amount);
-    }
+    let currentRefund = refundRow;
+    let currentPayment = paymentRow;
+    if (refundApplied.kind === 'APPLIED') {
+      let nextPayment = toDomainPayment(paymentRow);
+      const refundBecameSucceeded =
+        refundApplied.fromStatus !== REFUND_STATES.SUCCEEDED &&
+        refundApplied.toStatus === REFUND_STATES.SUCCEEDED;
+      if (refundBecameSucceeded) {
+        nextPayment = applyRefund(nextPayment, refundApplied.refund.amount);
+      }
 
-    const updatedRefund = await tx.refund.update({
-      where: { id: refundRow.id },
-      data: toRefundUpdate(refundApplied.refund),
-    });
-    const updatedPayment = refundBecameSucceeded
-      ? await tx.payment.update({
-          where: { id: paymentRow.id },
-          data: toPaymentUpdate(nextPayment),
-        })
-      : paymentRow;
-
-    const refundAction =
-      refundApplied.toStatus === REFUND_STATES.PROCESSING
-        ? 'refund.processing_started'
-        : refundApplied.toStatus === REFUND_STATES.SUCCEEDED
-          ? 'refund.succeeded'
-          : refundApplied.toStatus === REFUND_STATES.FAILED
-            ? 'refund.failed'
-            : undefined;
-    if (refundAction !== undefined) {
-      await options.writeAudit(tx, {
-        organizationId: updatedRefund.organizationId,
-        action: refundAction,
-        resourceType: 'refund',
-        resourceId: updatedRefund.id,
-        metadata: webhookAuditMetadata(lockedInbox, {
-          refundId: updatedRefund.id,
-          paymentId: updatedPayment.id,
-          providerExecutionId: refundExecution.id,
-          oldStatus: refundApplied.fromStatus,
-          newStatus: refundApplied.toStatus,
-          amount: updatedRefund.amount.toString(10),
-        }),
+      currentRefund = await tx.refund.update({
+        where: { id: refundRow.id },
+        data: toRefundUpdate(refundApplied.refund),
       });
-    }
-    if (refundBecameSucceeded) {
-      const paymentAction = paymentAuditAction(nextPayment.status);
-      if (paymentAction !== undefined) {
+      currentPayment = refundBecameSucceeded
+        ? await tx.payment.update({
+            where: { id: paymentRow.id },
+            data: toPaymentUpdate(nextPayment),
+          })
+        : paymentRow;
+
+      const refundAction =
+        refundApplied.toStatus === REFUND_STATES.PROCESSING
+          ? 'refund.processing_started'
+          : refundApplied.toStatus === REFUND_STATES.SUCCEEDED
+            ? 'refund.succeeded'
+            : refundApplied.toStatus === REFUND_STATES.FAILED
+              ? 'refund.failed'
+              : undefined;
+      if (refundAction !== undefined) {
         await options.writeAudit(tx, {
-          organizationId: updatedPayment.organizationId,
-          action: paymentAction,
-          resourceType: 'payment',
-          resourceId: updatedPayment.id,
+          organizationId: currentRefund.organizationId,
+          action: refundAction,
+          resourceType: 'refund',
+          resourceId: currentRefund.id,
           metadata: webhookAuditMetadata(lockedInbox, {
-            paymentId: updatedPayment.id,
-            refundId: updatedRefund.id,
-            oldStatus: paymentRow.status,
-            newStatus: nextPayment.status,
-            refundedAmount: updatedPayment.refundedAmount.toString(10),
+            refundId: currentRefund.id,
+            paymentId: currentPayment.id,
+            providerExecutionId: refundExecution.id,
+            oldStatus: refundApplied.fromStatus,
+            newStatus: refundApplied.toStatus,
+            amount: currentRefund.amount.toString(10),
           }),
         });
       }
+      if (refundBecameSucceeded) {
+        const paymentAction = paymentAuditAction(nextPayment.status);
+        if (paymentAction !== undefined) {
+          await options.writeAudit(tx, {
+            organizationId: currentPayment.organizationId,
+            action: paymentAction,
+            resourceType: 'payment',
+            resourceId: currentPayment.id,
+            metadata: webhookAuditMetadata(lockedInbox, {
+              paymentId: currentPayment.id,
+              refundId: currentRefund.id,
+              oldStatus: paymentRow.status,
+              newStatus: nextPayment.status,
+              refundedAmount: currentPayment.refundedAmount.toString(10),
+            }),
+          });
+        }
+      }
     }
 
-    const processed = await inbox.markProcessed(
-      tx,
-      lockedInbox.id,
-      now,
-      INBOX_PROCESSING_OUTCOMES.APPLIED,
+    await runLedgerPosting(() =>
+      postCapture(tx, {
+        organizationId: refundExecution.organizationId,
+        payment: currentPayment,
+        paymentProviderExecution: paymentExecution,
+      }),
     );
-    return { outcome: INBOX_PROCESSING_OUTCOMES.APPLIED, event: processed };
+    await runLedgerPosting(() =>
+      postRefund(tx, {
+        organizationId: refundExecution.organizationId,
+        payment: currentPayment,
+        refund: currentRefund,
+        paymentProviderExecution: paymentExecution,
+        refundProviderExecution: refundExecution,
+      }),
+    );
+
+    const outcome =
+      refundApplied.kind === 'APPLIED'
+        ? INBOX_PROCESSING_OUTCOMES.APPLIED
+        : refundApplied.kind === 'NOOP_STALE'
+          ? INBOX_PROCESSING_OUTCOMES.NOOP_STALE
+          : INBOX_PROCESSING_OUTCOMES.NOOP_ALREADY_CURRENT;
+    const processed = await inbox.markProcessed(tx, lockedInbox.id, now, outcome);
+    return { outcome, event: processed };
   });
+}
+
+async function runLedgerPosting(work: () => Promise<unknown>): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    throw mapLedgerProcessingError(error);
+  }
+}
+
+function mapLedgerProcessingError(error: unknown): never {
+  if (isLedgerApplicationError(error)) {
+    if (
+      error.code === 'LEDGER_CONCURRENCY_CONFLICT' ||
+      error.code === 'IDEMPOTENCY_OPERATION_IN_PROGRESS'
+    ) {
+      throw new RetryableEventError(error.message, error.code);
+    }
+    throw new TerminalEventError(error.message, error.code);
+  }
+  if (isLedgerError(error)) {
+    throw new TerminalEventError(error.message, error.code);
+  }
+  throw error;
 }

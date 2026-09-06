@@ -11,7 +11,8 @@ canonical payments, canonical refunds, durable financial-operation
 idempotency (`idempotency_records`), canonical provider-account
 connections (`provider_account_connections`), and the append-only
 double-entry ledger (`ledger_accounts`, `ledger_transactions`,
-`ledger_entries`). Webhook HTTP entities remain application-owned — see
+`ledger_entries`) and immutable system-account bindings
+(`ledger_account_bindings`). Webhook HTTP entities remain application-owned — see
 [`../../docs/decisions/ADR-002-postgresql-and-prisma.md`](../../docs/decisions/ADR-002-postgresql-and-prisma.md)
 and
 [`../../docs/decisions/ADR-003-multi-tenant-organization-model.md`](../../docs/decisions/ADR-003-multi-tenant-organization-model.md)
@@ -222,8 +223,12 @@ double-entry ledger (`ledger_accounts`, `ledger_transactions`,
 `ledger_entries`) plus identity-immutability triggers and a deferred
 commit-time balance constraint were added in `add_double_entry_ledger`
 (timestamp `20260902230000`). Prisma cannot model those triggers.
-Payment/Refund rows were not changed. New migration timestamps
-must sort after the latest already-committed migration.
+Payment/Refund rows were not changed. Immutable
+`ledger_account_bindings` plus role/type/currency CHECKs, binding
+immutability triggers, and bound-account archive protection were added
+in `add_ledger_account_bindings` (timestamp `20260902240000`). New
+migration timestamps must sort after the latest already-committed
+migration.
 
 Before committing a migration:
 
@@ -417,6 +422,10 @@ Indexes were added for known query shapes, not speculatively:
 - `LedgerEntry`: `(organizationId, ledgerAccountId)` and
   `(ledgerTransactionId)`. Composite FKs bind each entry to the same
   organization as its transaction and account.
+- `LedgerAccountBinding`: unique `(id, organizationId)`, unique
+  `(organizationId, role, provider, providerAccountScope, currency)`,
+  plus `(organizationId, ledgerAccountId)`. Composite FK
+  `(ledgerAccountId, organizationId) → ledger_accounts`.
 
 ## Database-enforced vs. application-enforced validation
 
@@ -476,6 +485,11 @@ Prisma and PostgreSQL cannot express every invariant this schema implies.
   `TRUNCATE`), and a deferred constraint trigger that requires each
   posted transaction to have at least two entries with equal debit and
   credit sums before `COMMIT`. Prisma cannot model those triggers.
+- Binding invariants in `add_ledger_account_bindings`: provider/scope/
+  currency shape, `PROVIDER_RECEIVABLE` must bind an `ASSET`,
+  `SETTLEMENT_PAYABLE` must bind a `LIABILITY`, binding currency must
+  match the account, bindings reject `UPDATE`/`DELETE`/`TRUNCATE`, and
+  bound accounts cannot be archived.
 - Audit immutability in `enforce_immutable_audit_logs`:
   `BEFORE UPDATE OR DELETE` (and `BEFORE TRUNCATE`) raises
   `audit_logs is append-only`; CHECK constraints forbid both actor FKs,

@@ -14,6 +14,7 @@ import { AuditService } from '../audit/audit.service';
 import { AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES, type AuditActor } from '../audit/audit.types';
 import type { RequestContext } from '../auth/types/request-context.type';
 import { DatabaseService } from '../database/database.service';
+import { assertLedgerAccountUnbound } from '@fraterunion-payments/ledger-application';
 import {
   LedgerAccountNotFoundException,
   isLedgerAccountCodeUnique,
@@ -147,6 +148,11 @@ export class LedgerAccountsService {
       }
       if (existing.status === LedgerAccountStatus.ARCHIVED) {
         return existing;
+      }
+      try {
+        await assertLedgerAccountUnbound(tx, organizationId, existing.id);
+      } catch (error) {
+        throw mapLedgerDomainError(error) ?? error;
       }
       const archived = await tx.ledgerAccount.update({
         where: { id: existing.id },

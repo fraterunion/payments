@@ -156,5 +156,6 @@ the same correction model for money: never edit a posted row; write a
 new compensating record. Audit applies that idea to security evidence.
 The ledger engine is implemented ([`ledger.md`](./ledger.md)). Posted
 ledger transactions are not also written to AuditLog. Account
-create/archive are audited. Payment/Refund transitions still do not
-post ledger entries.
+create/archive are audited. Payment/Refund capture and refund journals
+are financial history, not additional AuditLog rows. See
+[`payment-ledger-posting.md`](./payment-ledger-posting.md).

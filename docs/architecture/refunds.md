@@ -298,8 +298,10 @@ payment-refund consumer. Enqueueing `refund.*` /
 `payment.partially_refunded` / `payment.refunded` today would
 dead-letter. Event emission belongs with provider orchestration.
 
-Refund success still writes **zero** ledger entries. See
-[`ledger.md`](./ledger.md).
+A succeeded Refund posts one `refund` journal that reverses the
+unsettled clearing position. See
+[`payment-ledger-posting.md`](./payment-ledger-posting.md). `CREATED`,
+`PROCESSING`, and `FAILED` still write zero refund journals.
 
 ## Failure persistence
 

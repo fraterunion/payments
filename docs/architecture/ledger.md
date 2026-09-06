@@ -2,14 +2,19 @@
 
 Authoritative description of the FraterUnion Payments internal ledger.
 Implemented in `@fraterunion-payments/ledger-core` (pure accounting) and
-`apps/api/src/ledger` (persistence). Schema lives in
-`packages/database`. See [ADR-006](../decisions/ADR-006-append-only-double-entry-ledger.md)
+`@fraterunion-payments/ledger-application` (Prisma posting, bindings,
+queries). `apps/api/src/ledger` is a Nest wrapper. Schema lives in
+`packages/database`. Payment/Refund journals are composed in
+`@fraterunion-payments/payment-application` — see
+[`payment-ledger-posting.md`](./payment-ledger-posting.md).
+See [ADR-006](../decisions/ADR-006-append-only-double-entry-ledger.md)
 and [`ledger-principles.md`](./ledger-principles.md).
 
 Last updated: 2026-09-06
 
-This commit is the ledger **engine**. Payment and Refund lifecycle
-transitions do **not** post entries yet.
+This document is the generic ledger **engine**. Automatic Payment and
+Refund posting is described separately and must not specialize this
+engine.
 
 ## Accounting truth
 
@@ -42,15 +47,17 @@ derived account balance
 ## Package boundaries
 
 ```text
-payment/refund application
+payment-application
         ↓
-ledger application (apps/api/src/ledger)
+ledger-application
         ↓
 ledger-core + database
 ```
 
-Generic ledger infrastructure never imports a payment provider.
-`packages/ledger-core` has no Prisma, Nest, Stripe, or API dependency.
+`apps/api` and `apps/worker` compose those packages. Generic ledger
+infrastructure never imports a payment provider. `packages/ledger-core`
+has no Prisma, Nest, Stripe, or API dependency. `ledger-application`
+knows Prisma and does not depend on payment-application.
 
 ## Model
 
@@ -181,8 +188,10 @@ Every query requires `organizationId`. Foreign accounts are
 `LEDGER_ACCOUNT_NOT_FOUND` / `LEDGER_CROSS_TENANT_ACCOUNT`. Organization
 delete is `RESTRICT` while ledger rows exist.
 
-## What this commit is not
+## What this engine is not
 
-No automatic `payment.succeeded` / `refund.succeeded` posting. No Stripe
-fee, settlement, payout, FX, revenue-recognition, or treasury accounts.
+The engine does not classify merchant revenue, inspect Stripe fees, or
+clear settlements. Payment/Refund operational journals are composed
+above it in [`payment-ledger-posting.md`](./payment-ledger-posting.md).
 No public ledger HTTP API. No outbox `ledger.transaction.posted` event.
+No persisted mutable balance column.

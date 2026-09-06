@@ -204,6 +204,13 @@ enum LedgerEntrySide {
   @@map("ledger_entry_side")
 }
 
+enum LedgerAccountBindingRole {
+  PROVIDER_RECEIVABLE
+  SETTLEMENT_PAYABLE
+
+  @@map("ledger_account_binding_role")
+}
+
 /// Canonical merchant-processor connection readiness. These are not Stripe
 /// account status strings. Semantics:
 /// - PENDING: provider account exists; required capabilities are not yet
@@ -281,6 +288,7 @@ model Organization {
   ledgerAccounts             LedgerAccount[]
   ledgerTransactions         LedgerTransaction[]
   ledgerEntries              LedgerEntry[]
+  ledgerAccountBindings      LedgerAccountBinding[]
 
   @@index([status])
   @@index([type])
@@ -1006,8 +1014,9 @@ model LedgerAccount {
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   entries      LedgerEntry[]
+  bindings     LedgerAccountBinding[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, code], map: "ledger_accounts_org_code_uidx")
@@ -1070,4 +1079,29 @@ model LedgerEntry {
   @@index([organizationId, ledgerAccountId])
   @@index([ledgerTransactionId])
   @@map("ledger_entries")
+}
+
+/// Immutable system-account assignment. One LedgerAccount fulfills each
+/// operational role for a provider/account-scope/currency. Prisma cannot
+/// express binding immutability, role/type consistency, or bound-account
+/// archive protection; those live in `add_ledger_account_bindings`.
+model LedgerAccountBinding {
+  id             String @id @default(uuid(7)) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  role                 LedgerAccountBindingRole
+  provider             String                   @db.VarChar(32)
+  providerAccountScope String                   @map("provider_account_scope") @db.VarChar(261)
+  currency             String                   @db.VarChar(3)
+  ledgerAccountId      String                   @map("ledger_account_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account      LedgerAccount @relation(fields: [ledgerAccountId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, role, provider, providerAccountScope, currency], map: "ledger_account_bindings_role_scope_uidx")
+  @@index([organizationId, ledgerAccountId])
+  @@map("ledger_account_bindings")
 }

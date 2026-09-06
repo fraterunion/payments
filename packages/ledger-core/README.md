@@ -4,7 +4,9 @@ Pure double-entry accounting for FraterUnion Payments.
 
 This package does not depend on Prisma, NestJS, Stripe, HTTP, or process
 environment. It validates journals, derives signed balances, and
-canonicalizes posting fingerprints. Persistence lives in `apps/api/src/ledger`.
+canonicalizes posting fingerprints. Persistence lives in
+`@fraterunion-payments/ledger-application`. Payment/Refund journals are
+composed in `@fraterunion-payments/payment-application`.
 
 ```text
 entries = accounting truth

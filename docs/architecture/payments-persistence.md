@@ -256,9 +256,12 @@ with provider orchestration and a concrete consumer.
 
 ## Ledger
 
-The append-only double-entry engine exists
-([`ledger.md`](./ledger.md)). Payment lifecycle transitions still write
-**zero** ledger entries. Automatic posting is a later commit.
+A successfully captured Payment (`capturedAmount > 0` in
+`SUCCEEDED` / `PARTIALLY_REFUNDED` / `REFUNDED`) posts one
+`payment.capture` journal through
+[`payment-ledger-posting.md`](./payment-ledger-posting.md). Authorization
+and failed/canceled states still write zero journals. `POST /payments`
+still does not call Stripe.
 
 ## Failure persistence
 

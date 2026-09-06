@@ -65,8 +65,11 @@ refund.execute
 ledger.transaction.post
 ```
 
-`ledger.transaction.post` is used by the internal ledger posting service.
-There is no public ledger write endpoint.
+`ledger.transaction.post` is used by the internal ledger posting service,
+including Payment capture and Refund journals. Those use deterministic
+internal keys (`ledger:payment:capture:<paymentId>`,
+`ledger:refund:<refundId>`), never a webhook Event ID or client
+`Idempotency-Key`. There is no public ledger write endpoint.
 
 There are no Stripe-specific scopes (`stripe.account.create` is not
 registered) and no `GET`/`POST /idempotency` endpoints. There are no

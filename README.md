@@ -25,9 +25,10 @@ and organization-owned Stripe connected-account onboarding
 (`ProviderAccountConnection`). Inbound Stripe webhook ingestion verifies
 signatures, persists durable `InboxEvent` receipts, and applies
 normalized Payment/Refund observations. Public Payment/Refund APIs are
-not wired to Stripe yet. The append-only double-entry ledger engine
-exists; Payment/Refund transitions do not post entries yet.
-Reconciliation, billing, and outbound organization webhooks are not
+not wired to Stripe yet. The append-only double-entry ledger posts
+operational provider-receivable / settlement-payable journals when a
+captured Payment or succeeded Refund is observed. Reconciliation,
+billing, fees/settlements, and outbound organization webhooks are not
 implemented yet.
 
 ## Monorepo structure
@@ -44,8 +45,9 @@ packages/
   database/             PostgreSQL/Prisma schema and client
   events/               Transactional outbox and durable inbox (provider-agnostic)
   eslint-config/        Shared ESLint flat configs (base, next, node)
+  ledger-application/   Ledger persistence, bindings, and idempotent posting
   ledger-core/          Provider-neutral double-entry ledger domain
-  payment-application/  Financial inbox orchestration (events + stripe + payment-core)
+  payment-application/  Financial inbox orchestration (events + stripe + payment-core + ledger)
   payment-core/         Provider-independent payment domain (money, states, refunds)
   provider-contracts/   Provider interface, capabilities, and registry
   provider-stripe/      Stripe PaymentProvider adapter (SDK isolated here)

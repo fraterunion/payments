@@ -273,6 +273,9 @@ importers:
       '@fraterunion-payments/events':
         specifier: workspace:*
         version: link:../../packages/events
+      '@fraterunion-payments/ledger-application':
+        specifier: workspace:*
+        version: link:../../packages/ledger-application
       '@fraterunion-payments/ledger-core':
         specifier: workspace:*
         version: link:../../packages/ledger-core
@@ -594,6 +597,37 @@ importers:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.9)(yaml@2.9.0))
 
+  packages/ledger-application:
+    dependencies:
+      '@fraterunion-payments/database':
+        specifier: workspace:*
+        version: link:../database
+      '@fraterunion-payments/ledger-core':
+        specifier: workspace:*
+        version: link:../ledger-core
+      '@fraterunion-payments/payment-core':
+        specifier: workspace:*
+        version: link:../payment-core
+    devDependencies:
+      '@fraterunion-payments/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@fraterunion-payments/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.9)(yaml@2.9.0))
+
   packages/ledger-core:
     devDependencies:
       '@fraterunion-payments/eslint-config':
@@ -623,6 +657,12 @@ importers:
       '@fraterunion-payments/events':
         specifier: workspace:*
         version: link:../events
+      '@fraterunion-payments/ledger-application':
+        specifier: workspace:*
+        version: link:../ledger-application
+      '@fraterunion-payments/ledger-core':
+        specifier: workspace:*
+        version: link:../ledger-core
       '@fraterunion-payments/payment-core':
         specifier: workspace:*
         version: link:../payment-core

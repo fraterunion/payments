@@ -1,0 +1,7 @@
+{
+  "extends": "@fraterunion-payments/typescript-config/library.json",
+  "compilerOptions": {
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}
