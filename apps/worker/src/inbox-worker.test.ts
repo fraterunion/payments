@@ -52,6 +52,7 @@ function fakeEvent(overrides: Partial<InboxEvent> = {}): InboxEvent {
 function createWorker(options: {
   claim?: { events: InboxEvent[]; reclaimed: number };
   processEvent?: (event: InboxEvent) => Promise<unknown>;
+  handlers?: Record<string, (event: InboxEvent) => Promise<unknown>>;
   markFailedOrRetry?: ReturnType<typeof vi.fn>;
 }) {
   const claimBatch = vi.fn().mockResolvedValue(options.claim ?? { events: [], reclaimed: 0 });
@@ -81,9 +82,10 @@ function createWorker(options: {
     environment: environment(),
     logger: logger as never,
     workerId: 'worker-1',
-    writeAudit: async () => undefined,
     sleep: async () => undefined,
-    processEvent: options.processEvent ?? (async () => undefined),
+    handlers: options.handlers ?? {
+      stripe: options.processEvent ?? (async () => undefined),
+    },
   });
 
   return { worker, claimBatch, markFailedOrRetry, logger };
@@ -104,6 +106,66 @@ describe('InboxWorker', () => {
 
     await worker.runTick();
     expect(order).toEqual(['claim', 'handler']);
+  });
+
+  it('claims only registered sources and invokes the Stripe handler', async () => {
+    const invoked: string[] = [];
+    const stripeHandler = vi.fn(async (event: InboxEvent) => {
+      invoked.push(event.source);
+      return { outcome: 'APPLIED', event };
+    });
+    const { worker, claimBatch } = createWorker({
+      handlers: { stripe: stripeHandler },
+    });
+    claimBatch.mockImplementation(async (_db, options: { source?: string }) => {
+      if (options.source === 'stripe') {
+        return { events: [fakeEvent()], reclaimed: 0 };
+      }
+      return { events: [], reclaimed: 0 };
+    });
+
+    const result = await worker.runTick();
+    expect(claimBatch).toHaveBeenCalledTimes(1);
+    expect(claimBatch.mock.calls[0]?.[1]).toMatchObject({ source: 'stripe' });
+    expect(invoked).toEqual(['stripe']);
+    expect(stripeHandler).toHaveBeenCalledTimes(1);
+    expect(result.processed).toBe(1);
+  });
+
+  it('does not claim unregistered sources', async () => {
+    const stripeHandler = vi.fn(async () => ({ outcome: 'APPLIED' }));
+    const { worker, claimBatch } = createWorker({
+      handlers: { stripe: stripeHandler },
+    });
+    const claimedSources: Array<string | undefined> = [];
+    claimBatch.mockImplementation(async (_db, options: { source?: string }) => {
+      claimedSources.push(options.source);
+      return { events: [], reclaimed: 0 };
+    });
+
+    const result = await worker.runTick();
+    expect(claimedSources).toEqual(['stripe']);
+    expect(claimedSources).not.toContain('moneris');
+    expect(stripeHandler).not.toHaveBeenCalled();
+    expect(result.claimed).toBe(0);
+  });
+
+  it('leaves an unregistered claimed source untouched instead of failing it', async () => {
+    const stripeHandler = vi.fn(async () => ({ outcome: 'APPLIED' }));
+    const { worker, markFailedOrRetry } = createWorker({
+      claim: {
+        events: [fakeEvent({ source: 'moneris', eventType: 'payment.authorized' })],
+        reclaimed: 0,
+      },
+      handlers: { stripe: stripeHandler },
+    });
+
+    const result = await worker.runTick();
+    expect(stripeHandler).not.toHaveBeenCalled();
+    expect(markFailedOrRetry).not.toHaveBeenCalled();
+    expect(result.processed).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(result.retried).toBe(0);
   });
 
   it('does not mark PROCESSED again after a successful handler', async () => {

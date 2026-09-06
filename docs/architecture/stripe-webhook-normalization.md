@@ -4,7 +4,27 @@ Turns a verified Stripe `InboxEvent(RECEIVED)` into canonical Payment /
 Refund mutations. Stripe remains an observation source. Stripe event
 type names never persist on Payment or Refund.
 
-Last updated: 2026-09-02
+Last updated: 2026-09-06
+
+## Package boundaries
+
+```text
+             payment-core
+                  ↑
+                  |
+events ← worker/application → provider-stripe
+                  |
+                  ↓
+               database
+```
+
+- `events` = transport / delivery infrastructure (inbox, outbox, hash,
+  claim, retry). Generic events infrastructure never imports a payment
+  provider.
+- `provider-stripe` = Stripe parsing / mapping
+  (`normalizeStripeFinancialEvent`)
+- `payment-application` + `apps/worker` = financial orchestration
+  (`processStripeInboxEvent`, registered InboxWorker handler)
 
 ## Pipeline
 
@@ -13,6 +33,9 @@ Stripe evt
    |
    v
 InboxEvent
+   |
+   v
+application Stripe handler
    |
    v
 Stripe normalizer (provider-stripe)
@@ -194,7 +217,9 @@ There is no parallel `stripe_webhook_processing` table. The Inbox row is
 the durable processing record.
 
 `apps/worker` runs `OutboxWorker` and `InboxWorker` in one process.
-InboxWorker claims `source='stripe'` with `FOR UPDATE SKIP LOCKED`:
+`InboxWorker` is generic: it claims only sources with registered
+handlers. Production registers `source='stripe'`. Claim uses
+`FOR UPDATE SKIP LOCKED`:
 
 ```text
 RECEIVED AND available_at <= now

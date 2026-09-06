@@ -4,7 +4,7 @@ Authoritative description of `PaymentProviderExecution` and
 `RefundProviderExecution`. These tables are the only place canonical
 FraterUnion Payments aggregates bind to opaque provider objects.
 
-Last updated: 2026-09-02
+Last updated: 2026-09-06
 
 ## Why executions exist
 
@@ -30,8 +30,10 @@ Canonical Payment
                                       +---- providerRefundId = re_...
 ```
 
-Provider IDs stop at the execution layer. Webhook processors resolve
-`pi_…` / `re_…` **only** through these rows. PaymentIntent metadata,
+Provider IDs stop at the execution layer. The application Stripe handler
+(`@fraterunion-payments/payment-application`) resolves `pi_…` / `re_…`
+**only** through these rows. Generic events infrastructure never imports
+a payment provider. PaymentIntent metadata,
 description, and customer fields are never tenant or payment authority.
 
 ## PaymentProviderExecution

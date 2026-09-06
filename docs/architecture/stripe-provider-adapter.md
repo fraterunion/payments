@@ -36,7 +36,7 @@ Webhook **signature verification** is exported as `verifyStripeWebhook`.
 Verified event JSON is normalized by `normalizeStripeFinancialEvent` into
 provider-neutral observations. HTTP ingestion lives in `apps/api`;
 canonical application lives in `processStripeInboxEvent`
-(`@fraterunion-payments/events`). See
+(`@fraterunion-payments/payment-application`). See
 [`stripe-webhook-ingestion.md`](./stripe-webhook-ingestion.md) and
 [`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md).
 

@@ -26,10 +26,14 @@ import {
   STRIPE_PROVIDER_CODE,
   StripeWebhookNormalizeError,
 } from '@fraterunion-payments/provider-stripe';
-import { RetryableEventError, TerminalEventError } from '../errors.js';
-import type { EventWriteClient } from '../types.js';
-import { InboxService } from './inbox.service.js';
-import { INBOX_PROCESSING_OUTCOMES, type InboxProcessingOutcome } from './inbox.types.js';
+import {
+  InboxService,
+  INBOX_PROCESSING_OUTCOMES,
+  RetryableEventError,
+  TerminalEventError,
+  type EventWriteClient,
+  type InboxProcessingOutcome,
+} from '@fraterunion-payments/events';
 
 export type StripeInboxAuditWrite = (
   client: EventWriteClient,

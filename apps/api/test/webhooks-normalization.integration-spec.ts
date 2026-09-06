@@ -2,11 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import type { PrismaClient } from '@fraterunion-payments/database';
-import {
-  InboxService,
-  processStripeInboxEvent,
-  RetryableEventError,
-} from '@fraterunion-payments/events';
+import { InboxService, RetryableEventError } from '@fraterunion-payments/events';
+import { processStripeInboxEvent } from '@fraterunion-payments/payment-application';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';

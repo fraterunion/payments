@@ -7,7 +7,7 @@ acknowledge. Canonical Payment / Refund mutation is documented in
 This HTTP path does **not** write a ledger or enqueue financial outbox
 events.
 
-Last updated: 2026-09-02
+Last updated: 2026-09-06
 
 ## Architecture
 
@@ -26,7 +26,7 @@ Tenant/account resolver
 InboxEvent(RECEIVED)
   |
   v
-InboxWorker / processStripeInboxEvent
+InboxWorker / payment-application processStripeInboxEvent
   |
   v
 Canonical Payment / Refund
@@ -61,8 +61,10 @@ Normalization — see stripe-webhook-normalization.md
 
 HTTP ingestion still only verifies, resolves tenant, and persists the
 inbox row. Canonical Payment/Refund mutation happens asynchronously in
-the inbox processor. The generic **outbox** worker does not claim inbox
-rows. Stripe financial processing uses a dedicated InboxWorker path.
+the application Stripe inbox handler. The generic **outbox** worker
+does not claim inbox rows. Generic `InboxWorker` claims only registered
+sources; production registers `source=stripe`. Generic events
+infrastructure never imports a payment provider.
 
 ## HTTP endpoint
 

@@ -3,7 +3,7 @@ import type { InboxEvent } from '@fraterunion-payments/database';
 import {
   processStripeInboxEvent,
   type ProcessStripeInboxResult,
-} from '@fraterunion-payments/events';
+} from '@fraterunion-payments/payment-application';
 import { PinoLogger } from 'nestjs-pino';
 import { AuditService } from '../audit/audit.service';
 import { DatabaseService } from '../database/database.service';

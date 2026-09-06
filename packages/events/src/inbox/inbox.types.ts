@@ -37,6 +37,14 @@ export interface InboxClaimBatchOptions {
   readonly source?: string;
 }
 
+/**
+ * Source-specific inbox work. Generic infrastructure does not select
+ * providers; the application registers handlers by source.
+ */
+export type InboxEventHandler = (event: InboxEvent) => Promise<unknown>;
+
+export type InboxHandlerRegistry = Readonly<Record<string, InboxEventHandler>>;
+
 export const INBOX_PROCESSING_OUTCOMES = {
   APPLIED: 'APPLIED',
   NOOP_ALREADY_CURRENT: 'NOOP_ALREADY_CURRENT',

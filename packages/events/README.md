@@ -2,7 +2,26 @@
 
 Framework-independent transactional outbox and durable inbox. NestJS is
 not a dependency. Delivery is **at-least-once**; consumers must be
-idempotent. See
+idempotent.
+
+This package is **generic delivery infrastructure**. It owns inbox/outbox
+persistence, deduplication, canonical hashing, claim/retry/lease, and
+handler-registry types. It does **not** import a payment provider,
+PaymentIntent, or financial aggregates.
+
+```text
+             payment-core
+                  ↑
+                  |
+events ← worker/application → provider-stripe
+                  |
+                  ↓
+               database
+```
+
+Generic events infrastructure never imports a payment provider.
+
+See
 [`docs/architecture/event-delivery.md`](../../docs/architecture/event-delivery.md)
 and [ADR-007](../../docs/decisions/ADR-007-transactional-outbox-and-inbox.md).
 
@@ -11,7 +30,7 @@ and [ADR-007](../../docs/decisions/ADR-007-transactional-outbox-and-inbox.md).
 ```text
 src/
   outbox/     enqueue, SKIP LOCKED claim, processed / retry / fail
-  inbox/      receive, claimBatch, Stripe financial processor
+  inbox/      receive, claimBatch, generic handler contract
   retry/      bounded exponential backoff with full jitter
   json/       canonical JSON for hashing
   hash/       SHA-256 payload digest
@@ -77,8 +96,12 @@ to a known tenant; it never overwrites payload, never downgrades tenant
 → platform, and never reassigns organization A → B.
 
 `payload` is the verified inbound JSON object. Stripe webhook ingestion
-stores the signed event JSON here after signature verification. See
-[`docs/architecture/stripe-webhook-ingestion.md`](../../docs/architecture/stripe-webhook-ingestion.md).
+stores the signed event JSON here after signature verification. Financial
+application of that payload is
+`@fraterunion-payments/payment-application`, not this package. See
+[`docs/architecture/stripe-webhook-ingestion.md`](../../docs/architecture/stripe-webhook-ingestion.md)
+and
+[`docs/architecture/stripe-webhook-normalization.md`](../../docs/architecture/stripe-webhook-normalization.md).
 
 ## Defaults
 

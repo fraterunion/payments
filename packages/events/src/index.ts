@@ -26,14 +26,11 @@ export type {
   InboxOrganizationAssignKind,
   InboxOrganizationAssignResult,
   InboxClaimBatchOptions,
+  InboxEventHandler,
+  InboxHandlerRegistry,
   InboxProcessingOutcome,
 } from './inbox/inbox.types.js';
 export { INBOX_PROCESSING_OUTCOMES } from './inbox/inbox.types.js';
-export { processStripeInboxEvent } from './inbox/stripe-inbox-processor.js';
-export type {
-  ProcessStripeInboxResult,
-  StripeInboxAuditWrite,
-} from './inbox/stripe-inbox-processor.js';
 export { EventHandlerRegistry } from './handlers/registry.js';
 export type { OutboxHandler } from './handlers/registry.js';
 export {

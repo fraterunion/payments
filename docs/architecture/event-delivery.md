@@ -6,7 +6,22 @@ outbox worker. Implementation lives in
 [`apps/worker`](../../apps/worker/README.md). This document follows
 [ADR-007](../decisions/ADR-007-transactional-outbox-and-inbox.md).
 
-Last updated: 2026-09-02
+`@fraterunion-payments/events` is generic delivery infrastructure. It
+never imports a payment provider. Financial orchestration lives in
+`@fraterunion-payments/payment-application` and is invoked by
+`apps/worker`.
+
+```text
+             payment-core
+                  ↑
+                  |
+events ← worker/application → provider-stripe
+                  |
+                  ↓
+               database
+```
+
+Last updated: 2026-09-06
 
 ## Delivery semantics
 
@@ -281,8 +296,10 @@ again.
 
 Claim fields (`claimedAt`, `claimExpiresAt`, `claimedBy`, `availableAt`,
 `processingOutcome`) support `FOR UPDATE SKIP LOCKED` leasing. Stripe
-financial application, audit, and `PROCESSED` commit in one transaction.
-See [`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md).
+financial application lives in
+`@fraterunion-payments/payment-application`. Audit and `PROCESSED`
+commit in one transaction. See
+[`stripe-webhook-normalization.md`](./stripe-webhook-normalization.md).
 
 ## Transaction composition
 
@@ -308,7 +325,8 @@ SQS.
 The process runs two pollers:
 
 - `OutboxWorker` — existing outbound events (empty production registry)
-- `InboxWorker` — `source='stripe'` financial normalization only
+- `InboxWorker` — generic source registry; production registers
+  `source='stripe'` → payment-application financial processor
 
 Unknown Stripe event types are processed as ignored no-ops, not
 dead-lettered. Inbox processing does not go through the outbox handler

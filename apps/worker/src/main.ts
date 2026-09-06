@@ -3,13 +3,10 @@ import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config as loadDotenv } from 'dotenv';
 import { createPrismaClient, Prisma } from '@fraterunion-payments/database';
-import {
-  EventHandlerRegistry,
-  InboxService,
-  OutboxService,
-  type StripeInboxAuditWrite,
-} from '@fraterunion-payments/events';
+import { EventHandlerRegistry, InboxService, OutboxService } from '@fraterunion-payments/events';
+import type { StripeInboxAuditWrite } from '@fraterunion-payments/payment-application';
 import { loadWorkerEnvironment, WorkerEnvironmentValidationError } from './config/environment.js';
+import { createStripeFinancialInboxHandler } from './inbox/stripe-financial-inbox-handler.js';
 import { InboxWorker } from './inbox-worker.js';
 import { createWorkerLogger } from './logger.js';
 import { OutboxWorker } from './outbox-worker.js';
@@ -62,7 +59,9 @@ async function bootstrap(): Promise<void> {
     environment,
     logger,
     workerId,
-    writeAudit,
+    handlers: {
+      stripe: createStripeFinancialInboxHandler({ database, writeAudit }),
+    },
   });
 
   let shuttingDown = false;

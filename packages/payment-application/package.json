@@ -1,33 +1,34 @@
 {
-  "name": "@fraterunion-payments/worker",
+  "name": "@fraterunion-payments/payment-application",
   "version": "0.0.0",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx watch src/main.ts",
-    "start": "node dist/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@fraterunion-payments/config": "workspace:*",
     "@fraterunion-payments/database": "workspace:*",
     "@fraterunion-payments/events": "workspace:*",
-    "@fraterunion-payments/payment-application": "workspace:*",
-    "dotenv": "catalog:",
-    "pino": "catalog:",
-    "pino-pretty": "catalog:",
-    "zod": "catalog:"
+    "@fraterunion-payments/payment-core": "workspace:*",
+    "@fraterunion-payments/provider-stripe": "workspace:*"
   },
   "devDependencies": {
     "@fraterunion-payments/eslint-config": "workspace:*",
     "@fraterunion-payments/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "eslint": "catalog:",
-    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

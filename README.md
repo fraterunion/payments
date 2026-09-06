@@ -35,13 +35,14 @@ apps/
   api/      NestJS API (auth, tenancy, customers, payments, refunds, provider connections, Stripe webhooks)
   admin/    Next.js App Router admin console
   docs/     Next.js App Router developer documentation site
-  worker/   Outbox worker (PostgreSQL poll, claim, dispatch)
+  worker/   Outbox + Inbox worker (PostgreSQL poll, claim, dispatch)
 
 packages/
   config/               Shared environment/config utilities
   database/             PostgreSQL/Prisma schema and client
-  events/               Transactional outbox and durable inbox
+  events/               Transactional outbox and durable inbox (provider-agnostic)
   eslint-config/        Shared ESLint flat configs (base, next, node)
+  payment-application/  Financial inbox orchestration (events + stripe + payment-core)
   payment-core/         Provider-independent payment domain (money, states, refunds)
   provider-contracts/   Provider interface, capabilities, and registry
   provider-stripe/      Stripe PaymentProvider adapter (SDK isolated here)

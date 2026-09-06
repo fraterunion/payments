@@ -30,6 +30,7 @@
     "@fraterunion-payments/config": "workspace:*",
     "@fraterunion-payments/database": "workspace:*",
     "@fraterunion-payments/events": "workspace:*",
+    "@fraterunion-payments/payment-application": "workspace:*",
     "@fraterunion-payments/payment-core": "workspace:*",
     "@fraterunion-payments/provider-contracts": "workspace:*",
     "@fraterunion-payments/provider-stripe": "workspace:*",
